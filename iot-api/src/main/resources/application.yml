@@ -1,0 +1,81 @@
+spring:
+  application:
+    name: iot-monitoring
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/iotmon
+    username: iotmon
+    password: iotmon
+    hikari:
+      # 寫入消費端會長時間持有連線做批次，查詢端不能因此餓死。
+      # 30 條是「消費端併發數 ＋ 查詢併發數」加上餘裕，不是隨手訂的。
+      maximum-pool-size: 30
+      minimum-idle: 5
+      connection-timeout: 5000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  kafka:
+    bootstrap-servers: localhost:9094
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      # 遙測允許少量遺失，換取吞吐。告警與狀態走另一個 template 用 acks=all。
+      acks: "1"
+      linger-ms: 20
+      batch-size: 65536
+      compression-type: lz4
+    consumer:
+      group-id: iot-telemetry-writer
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.iotmon.*"
+      # 一次拉一批再整批寫入資料庫，這是每秒五萬點的前提
+      max-poll-records: 2000
+    listener:
+      type: batch
+      ack-mode: manual_immediate
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  metrics:
+    tags:
+      application: iot-monitoring
+
+iot:
+  mqtt:
+    host: localhost
+    port: 1883
+    client-id: iot-bridge
+    # 橋接端訂閱所有機型與裝置的遙測
+    telemetry-topic: "iot/telemetry/+/+"
+    status-topic: "iot/status/+"
+  ingest:
+    # 批次大小與逾時的取捨：批次越大吞吐越好，但資料進到查詢端的延遲也越高。
+    # 400 筆 / 200ms 讓即時儀表板的延遲維持在人眼無感的範圍。
+    batch-size: 400
+    batch-timeout-ms: 200
+  offline-detection:
+    # LWT 是主要手段，這是 broker 自己掛掉時的補網，所以門檻放寬到分鐘級
+    silence-threshold-seconds: 180
+    scan-interval-seconds: 30
+
+logging:
+  level:
+    com.iotmon: INFO
+    org.apache.kafka: WARN

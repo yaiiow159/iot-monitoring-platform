@@ -81,6 +81,7 @@ Base：`http://localhost:8080/api/v1`
 | GET | `/cabinets` | 列出機櫃 |
 | POST | `/cabinets` | 新增機櫃 |
 | GET | `/devices` | 列出裝置，可依 `status`／`cabinetId`／`modelCode` 篩選 |
+| GET | `/devices/{deviceId}` | 單一裝置。前端的裝置詳情頁需要，用清單再過濾在一萬台的規模下不划算 |
 | POST | `/devices` | 註冊裝置 |
 | GET | `/alarm-rules` | 列出告警規則 |
 | POST | `/alarm-rules` | 新增告警規則 |
@@ -90,7 +91,7 @@ Base：`http://localhost:8080/api/v1`
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | GET | `/overview` | 儀表板摘要：各狀態裝置數、未解除告警數、寫入速率 |
-| GET | `/alarms?state=FIRING` | 告警列表 |
+| GET | `/alarms?state=FIRING&deviceId=...` | 告警列表。`deviceId` 供裝置詳情頁的告警歷史使用 |
 | GET | `/telemetry` | 歷史查詢，見下 |
 
 ### 歷史查詢
