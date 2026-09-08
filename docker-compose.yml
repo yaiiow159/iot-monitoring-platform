@@ -28,7 +28,7 @@ services:
       - -c
       - max_parallel_workers=8
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - timescale_data:/var/lib/postgresql/data
     healthcheck:
@@ -67,7 +67,7 @@ services:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9094
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
@@ -79,7 +79,7 @@ services:
       # 遙測是可以丟的：積壓時寧可讓推播消費端跳過，也不要把磁碟寫爆
       KAFKA_LOG_RETENTION_HOURS: 6
     ports:
-      - "9092:9092"
+      - "9094:9092"
     volumes:
       - kafka_data:/var/lib/kafka/data
     healthcheck:
@@ -93,7 +93,7 @@ services:
     image: prom/prometheus:v2.55.1
     container_name: iot-prometheus
     ports:
-      - "9090:9090"
+      - "9091:9090"
     volumes:
       - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
