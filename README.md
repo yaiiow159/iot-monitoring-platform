@@ -112,6 +112,11 @@ API 會限制回傳的序列數與時間桶數，超過就要求呼叫端縮小�
 - **裝置狀態**——上線、離線、訊號不穩（間歇性斷線）、資料異常（超出量程）、
   時鐘飄移（時間戳落後）。
 - **故障注入**——模擬器可指定比例的裝置進入異常模式，用來驗證告警規則與斷線偵測。
+- **監控樹**——Equipment → Sensor（可無限自我嵌套）→ Device（葉節點）。
+  同層順序是後端的總序（`(sortOrder, id)`），前端不自行排序；
+  任何節點的告警會上浮到每一層祖先直到 Equipment，而且上浮值是從子樹重算的，
+  不是靠計數器——「解除一則後兄弟還在響、父節點卻變綠」這個經典 bug 因此不存在。
+  詳見 [ADR-0005](docs/adr/0005-tree-ltree-and-rollup-by-recompute.md)。
 
 ---
 
@@ -181,3 +186,4 @@ java -jar iot-simulator/target/iot-simulator.jar --simulator.device-count=1000
 | [0002](docs/adr/0002-three-tier-downsampling.md) | 三層降採樣與保留策略 |
 | [0003](docs/adr/0003-kafka-between-mqtt-and-consumers.md) | MQTT 之後為什麼還要 Kafka |
 | [0004](docs/adr/0004-lwt-over-heartbeat-timeout.md) | 用 LWT 而非心跳逾時偵測斷線 |
+| [0005](docs/adr/0005-tree-ltree-and-rollup-by-recompute.md) | 監控樹用 ltree 存路徑，告警上浮用子樹重算而非計數器 |

@@ -144,3 +144,65 @@ GET /telemetry?deviceId=DEV-000123&metric=temperature&from=...&to=...&maxPoints=
 **遙測推播會做節流**：同一台裝置最多每秒推一次，取該秒內的最後一筆。
 人眼看不出每秒五次的差別，但瀏覽器會因此卡住。
 告警與狀態變化不節流——那些是低頻但每一則都重要。
+
+---
+
+## 監控樹（Equipment → Sensor* → Device）
+
+```
+Equipment            根節點，不能有父節點
+ └─ Sensor           可無限自我嵌套：Sensor 下可以再有 Sensor
+     ├─ Sensor
+     │   └─ Device   葉節點：Device 下不能再掛任何東西
+     └─ Device
+```
+
+規則由後端強制，違反回 `400`：Equipment 只能在根、Sensor 的父節點只能是 Equipment 或 Sensor、
+Device 的父節點只能是 Sensor、Device 不能有子節點。
+
+### 順序是後端的保證，不是前端的責任
+
+每個節點有 `sortOrder`。**所有回傳子節點的地方一律以 `(sortOrder, id)` 排序**，
+`id` 是決定性的平手判斷，因此同一棵樹每次回傳的順序都完全相同。
+前端**不得**自行排序，也不得用 Map／Set 這類不保證順序的結構承接子節點。
+
+新增節點時不指定 `sortOrder` 就排在同層最後；`sortOrder` 之間留有間隔（預設 1000），
+插入中間不需要重新編號整層。
+
+### 告警上浮
+
+每個節點回傳 `rollup`：**它自己與整個子樹**裡未解除告警的最高嚴重度與數量。
+葉節點響了，它的每一層祖先直到 Equipment 都會反映——這是「父元素感知」的實作。
+
+`rollup` 由子樹重新計算，不是遞增遞減的計數器；因此不存在
+「解除一則告警後兄弟節點還在響、父節點卻變綠」的狀態。
+
+| 方法 | 路徑 | 說明 |
+|---|---|---|
+| GET | `/tree` | 整棵樹，含每個節點的 `rollup`。已排序。 |
+| GET | `/tree/{nodeId}` | 該節點與其子樹 |
+| GET | `/tree/{nodeId}/ancestors` | 從根到該節點的路徑，**由上到下**，用來畫麵包屑與定位告警來源 |
+| POST | `/tree/nodes` | 新增節點：`{ kind, name, parentId, deviceId?, sortOrder? }` |
+| PATCH | `/tree/nodes/{nodeId}/order` | 調整順序：`{ sortOrder }` |
+
+```json
+{
+  "id": 1, "kind": "EQUIPMENT", "name": "1 號變電站", "sortOrder": 1000,
+  "rollup": { "severity": "CRITICAL", "firing": 3 },
+  "children": [
+    { "id": 4, "kind": "SENSOR", "name": "A 相", "sortOrder": 1000,
+      "rollup": { "severity": "CRITICAL", "firing": 2 },
+      "children": [
+        { "id": 9, "kind": "DEVICE", "name": "電流計", "deviceId": "DEV-000012", "sortOrder": 1000,
+          "rollup": { "severity": "CRITICAL", "firing": 2 }, "children": [] }
+      ] },
+    { "id": 5, "kind": "SENSOR", "name": "B 相", "sortOrder": 2000,
+      "rollup": { "severity": null, "firing": 0 }, "children": [] }
+  ]
+}
+```
+
+`rollup.severity` 為 `null` 代表子樹內沒有任何未解除告警。
+
+WebSocket 的 `alarm` 推播會多帶 `ancestorIds`（由上到下），
+前端據此更新整條路徑上的節點，而不是只更新葉節點。
