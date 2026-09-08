@@ -6,6 +6,7 @@ import com.iotmon.domain.model.MetricKey;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -70,8 +71,7 @@ public class TimescaleTelemetryQuery {
                     double v = rs.getDouble("value");
                     return new Point(rs.getTimestamp("time").toInstant(), v, v, v, 1);
                 },
-                deviceId, metricId, java.sql.Timestamp.from(from),
-                java.sql.Timestamp.from(to), MAX_POINTS);
+                deviceId, metricId, ts(from), ts(to), MAX_POINTS);
     }
 
     private List<Point> queryAggregate(Resolution resolution, int deviceId, short metricId,
@@ -93,8 +93,12 @@ public class TimescaleTelemetryQuery {
                         rs.getDouble("min_value"),
                         rs.getDouble("max_value"),
                         rs.getLong("sample_count")),
-                deviceId, metricId, java.sql.Timestamp.from(from),
-                java.sql.Timestamp.from(to), MAX_POINTS);
+                deviceId, metricId, ts(from), ts(to), MAX_POINTS);
+    }
+
+    /** JDBC 只認 java.sql.Timestamp；集中一處，免得四個呼叫點各自轉一次 */
+    private static Timestamp ts(Instant instant) {
+        return Timestamp.from(instant);
     }
 
     /**

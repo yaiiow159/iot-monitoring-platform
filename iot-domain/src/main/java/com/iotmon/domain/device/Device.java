@@ -1,5 +1,6 @@
 package com.iotmon.domain.device;
 
+import com.iotmon.domain.shared.Guard;
 import com.iotmon.domain.model.DeviceModel;
 import com.iotmon.domain.model.MetricDefinition;
 import com.iotmon.domain.model.MetricKey;
@@ -7,7 +8,6 @@ import com.iotmon.domain.telemetry.TelemetryPoint;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -43,11 +43,9 @@ public final class Device {
 
     public static Device register(Long id, DeviceId deviceId, String serialNo, DeviceModel model,
                                   Long cabinetId, Short slotNo) {
-        Objects.requireNonNull(deviceId, "裝置識別碼不可為 null");
-        Objects.requireNonNull(model, "裝置必須指定機型");
-        if (serialNo == null || serialNo.isBlank()) {
-            throw new IllegalArgumentException("裝置序號不可為空：" + deviceId);
-        }
+        Guard.notNull(deviceId, "裝置識別碼");
+        Guard.notNull(model, "裝置的機型");
+        Guard.notBlank(serialNo, "裝置 " + deviceId + " 的序號");
         // 有機櫃就必須有槽位，反之亦然。只有其一的狀態沒有實體意義，
         // 而它會讓機櫃檢視畫面出現一台「在這個櫃子裡但不知道在哪一格」的裝置。
         if ((cabinetId == null) != (slotNo == null)) {
@@ -60,7 +58,7 @@ public final class Device {
     public static Device rehydrate(Long id, DeviceId deviceId, String serialNo, DeviceModel model,
                                    Long cabinetId, Short slotNo, DeviceStatus status, Instant lastSeenAt) {
         return new Device(id, deviceId, serialNo, model, cabinetId, slotNo,
-                Objects.requireNonNullElse(status, DeviceStatus.UNKNOWN), lastSeenAt);
+                status != null ? status : DeviceStatus.UNKNOWN, lastSeenAt);
     }
 
     /**
@@ -70,7 +68,7 @@ public final class Device {
      *         重送同樣的狀態是常態（LWT retain、心跳補網），不該每次都推播。
      */
     public boolean transitionTo(DeviceStatus target, Instant at) {
-        Objects.requireNonNull(target, "目標狀態不可為 null");
+        Guard.notNull(target, "目標狀態");
         if (!status.canTransitionTo(target)) {
             throw new IllegalStateException(
                     "非法的狀態轉移：" + deviceId + " " + status + " → " + target);
@@ -91,7 +89,7 @@ public final class Device {
      * @return 這筆讀數是否落在機型定義的量程內；超出量程代表感測異常
      */
     public boolean acceptTelemetry(TelemetryPoint point) {
-        Objects.requireNonNull(point, "遙測不可為 null");
+        Guard.notNull(point, "遙測");
         if (!point.deviceId().equals(deviceId)) {
             throw new IllegalArgumentException(
                     "遙測的裝置識別碼與本裝置不符：" + point.deviceId() + " vs " + deviceId);

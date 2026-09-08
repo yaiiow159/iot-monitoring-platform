@@ -1,5 +1,7 @@
 package com.iotmon.domain.model;
 
+import com.iotmon.domain.shared.Guard;
+
 /**
  * 一個指標在某個機型上的定義：單位與物理量程。
  *
@@ -15,15 +17,10 @@ package com.iotmon.domain.model;
 public record MetricDefinition(MetricKey key, String unit, double minValue, double maxValue) {
 
     public MetricDefinition {
-        if (key == null) {
-            throw new IllegalArgumentException("指標代號不可為 null");
-        }
-        if (unit == null || unit.isBlank()) {
-            throw new IllegalArgumentException("指標單位不可為空：" + key);
-        }
-        if (Double.isNaN(minValue) || Double.isNaN(maxValue)) {
-            throw new IllegalArgumentException("量程不可為 NaN：" + key);
-        }
+        Guard.notNull(key, "指標代號");
+        Guard.notBlank(unit, "指標 " + key + " 的單位");
+        Guard.finite(minValue, "指標 " + key + " 的量程下限");
+        Guard.finite(maxValue, "指標 " + key + " 的量程上限");
         if (minValue >= maxValue) {
             throw new IllegalArgumentException(
                     "量程下限必須小於上限：" + key + " [" + minValue + ", " + maxValue + "]");

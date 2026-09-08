@@ -1,5 +1,6 @@
 package com.iotmon.domain.model;
 
+import com.iotmon.domain.shared.Guard;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,15 +31,9 @@ public final class DeviceModel {
 
     public static DeviceModel of(ModelCode code, String manufacturer, String displayName,
                                  List<MetricDefinition> metrics) {
-        if (code == null) {
-            throw new IllegalArgumentException("機型代號不可為 null");
-        }
-        if (manufacturer == null || manufacturer.isBlank()) {
-            throw new IllegalArgumentException("製造商不可為空：" + code);
-        }
-        if (displayName == null || displayName.isBlank()) {
-            throw new IllegalArgumentException("機型名稱不可為空：" + code);
-        }
+        Guard.notNull(code, "機型代號");
+        Guard.notBlank(manufacturer, "機型 " + code + " 的製造商");
+        Guard.notBlank(displayName, "機型 " + code + " 的名稱");
         if (metrics == null || metrics.isEmpty()) {
             // 不回報任何指標的機型無法被監控，建立它只會在下游產生一個永遠沒有資料的裝置
             throw new IllegalArgumentException("機型至少要定義一個指標：" + code);

@@ -1,9 +1,9 @@
 package com.iotmon.domain.alarm;
 
+import com.iotmon.domain.shared.Guard;
 import com.iotmon.domain.device.DeviceId;
 
 import java.time.Instant;
-import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -40,9 +40,9 @@ public final class Alarm {
 
     public static Alarm fire(Long id, DeviceId deviceId, long ruleId, AlarmSeverity severity,
                              Instant firedAt, Double triggerValue) {
-        Objects.requireNonNull(deviceId, "告警必須指定裝置");
-        Objects.requireNonNull(severity, "告警必須指定嚴重度");
-        Objects.requireNonNull(firedAt, "告警必須指定觸發時間");
+        Guard.notNull(deviceId, "告警的裝置");
+        Guard.notNull(severity, "告警的嚴重度");
+        Guard.notNull(firedAt, "告警的觸發時間");
         return new Alarm(id, deviceId, ruleId, severity, firedAt, triggerValue,
                 AlarmState.FIRING, null);
     }
@@ -63,7 +63,7 @@ public final class Alarm {
      * @return 這次呼叫是否真的改變了狀態
      */
     public boolean resolve(Instant at) {
-        Objects.requireNonNull(at, "解除時間不可為 null");
+        Guard.notNull(at, "解除時間");
         if (state == AlarmState.RESOLVED) {
             return false;
         }

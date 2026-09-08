@@ -1,12 +1,12 @@
 package com.iotmon.domain.alarm;
 
+import com.iotmon.domain.shared.Guard;
 import com.iotmon.domain.device.DeviceId;
 import com.iotmon.domain.model.MetricDefinition;
 import com.iotmon.domain.model.MetricKey;
 import com.iotmon.domain.model.ModelCode;
 
 import java.time.Duration;
-import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -51,7 +51,7 @@ public final class AlarmRule {
     public static AlarmRule forModel(Long id, String name, ModelCode modelCode, MetricKey metric,
                                      Comparison comparison, double threshold, Double secondaryValue,
                                      AlarmSeverity severity, Duration sustainedFor, boolean enabled) {
-        Objects.requireNonNull(modelCode, "機型規則必須指定機型");
+        Guard.notNull(modelCode, "機型規則的機型");
         return validated(new AlarmRule(id, name, modelCode, null, metric, comparison,
                 threshold, secondaryValue, severity, sustainedFor, enabled));
     }
@@ -60,21 +60,17 @@ public final class AlarmRule {
     public static AlarmRule forDevice(Long id, String name, DeviceId deviceId, MetricKey metric,
                                       Comparison comparison, double threshold, Double secondaryValue,
                                       AlarmSeverity severity, Duration sustainedFor, boolean enabled) {
-        Objects.requireNonNull(deviceId, "裝置規則必須指定裝置");
+        Guard.notNull(deviceId, "裝置規則的裝置");
         return validated(new AlarmRule(id, name, null, deviceId, metric, comparison,
                 threshold, secondaryValue, severity, sustainedFor, enabled));
     }
 
     private static AlarmRule validated(AlarmRule rule) {
-        if (rule.name == null || rule.name.isBlank()) {
-            throw new IllegalArgumentException("告警規則必須有名稱");
-        }
-        Objects.requireNonNull(rule.metric, "告警規則必須指定指標");
-        Objects.requireNonNull(rule.comparison, "告警規則必須指定比較方式");
-        Objects.requireNonNull(rule.severity, "告警規則必須指定嚴重度");
-        if (!Double.isFinite(rule.threshold)) {
-            throw new IllegalArgumentException("門檻必須是有限數：" + rule.name);
-        }
+        Guard.notBlank(rule.name, "告警規則名稱");
+        Guard.notNull(rule.metric, "告警規則的指標");
+        Guard.notNull(rule.comparison, "告警規則的比較方式");
+        Guard.notNull(rule.severity, "告警規則的嚴重度");
+        Guard.finite(rule.threshold, "門檻 " + rule.name);
         if (rule.comparison.requiresSecondaryValue() && rule.secondaryValue == null) {
             throw new IllegalArgumentException("OUT_OF_RANGE 需要上下界兩個值：" + rule.name);
         }

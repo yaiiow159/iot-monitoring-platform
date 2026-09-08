@@ -24,19 +24,11 @@ public class PayloadCodec {
     }
 
     public byte[] telemetry(DeviceId deviceId, long ts, Map<String, Double> metrics) {
-        try {
-            return telemetryWriter.writeValueAsBytes(new TelemetryMessage(deviceId.value(), ts, metrics));
-        } catch (Exception e) {
-            throw new IllegalStateException("遙測序列化失敗：" + deviceId, e);
-        }
+        return write(telemetryWriter, new TelemetryMessage(deviceId.value(), ts, metrics), "遙測", deviceId);
     }
 
     public byte[] status(DeviceId deviceId, String state, long ts) {
-        try {
-            return statusWriter.writeValueAsBytes(new StatusMessage(deviceId.value(), state, ts));
-        } catch (Exception e) {
-            throw new IllegalStateException("狀態序列化失敗：" + deviceId, e);
-        }
+        return write(statusWriter, new StatusMessage(deviceId.value(), state, ts), "狀態", deviceId);
     }
 
     /**
@@ -45,5 +37,17 @@ public class PayloadCodec {
      */
     public byte[] willPayload(DeviceId deviceId) {
         return status(deviceId, StatusMessage.OFFLINE, System.currentTimeMillis());
+    }
+
+    /**
+     * 序列化失敗只可能是程式錯誤（record 的形狀跟 writer 不符），不是執行期狀況，
+     * 所以包成 IllegalStateException 往上丟而不是回傳 null 讓呼叫端各自判斷。
+     */
+    private static byte[] write(ObjectWriter writer, Object message, String kind, DeviceId deviceId) {
+        try {
+            return writer.writeValueAsBytes(message);
+        } catch (Exception e) {
+            throw new IllegalStateException(kind + "序列化失敗：" + deviceId, e);
+        }
     }
 }

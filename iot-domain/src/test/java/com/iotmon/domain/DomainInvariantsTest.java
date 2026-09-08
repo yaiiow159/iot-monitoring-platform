@@ -173,7 +173,7 @@ class DomainInvariantsTest {
         @Test
         @DisplayName("規則必須綁機型或裝置其中之一，不可兩者皆是")
         void ruleScopeIsExclusive() {
-            assertThrows(NullPointerException.class, () -> AlarmRule.forModel(
+            assertThrows(IllegalArgumentException.class, () -> AlarmRule.forModel(
                     1L, "x", null, MetricKey.of("temperature"), Comparison.GT, 1, null,
                     AlarmSeverity.INFO, Duration.ZERO, true));
         }

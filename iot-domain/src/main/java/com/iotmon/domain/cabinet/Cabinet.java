@@ -1,9 +1,9 @@
 package com.iotmon.domain.cabinet;
 
+import com.iotmon.domain.shared.Guard;
 import com.iotmon.domain.model.ModelCode;
 
 import java.util.Collections;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -34,13 +34,9 @@ public final class Cabinet {
 
     public static Cabinet of(Long id, String code, CabinetType type, String location,
                              short slotCount, Set<ModelCode> acceptedModels) {
-        if (code == null || code.isBlank()) {
-            throw new IllegalArgumentException("機櫃代號不可為空");
-        }
-        Objects.requireNonNull(type, "機櫃必須指定類型");
-        if (slotCount <= 0) {
-            throw new IllegalArgumentException("機櫃槽位數必須為正：" + code);
-        }
+        Guard.notBlank(code, "機櫃代號");
+        Guard.notNull(type, "機櫃類型");
+        Guard.positive(slotCount, "機櫃 " + code + " 的槽位數");
         if (acceptedModels == null || acceptedModels.isEmpty()) {
             // 不接受任何機型的機櫃裝不了東西，建立它只會在設定畫面上製造困惑
             throw new IllegalArgumentException("機櫃類型至少要接受一種機型：" + code);

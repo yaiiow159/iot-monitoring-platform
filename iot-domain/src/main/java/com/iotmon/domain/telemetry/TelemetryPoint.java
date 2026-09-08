@@ -1,5 +1,6 @@
 package com.iotmon.domain.telemetry;
 
+import com.iotmon.domain.shared.Guard;
 import com.iotmon.domain.device.DeviceId;
 import com.iotmon.domain.model.MetricKey;
 
@@ -20,19 +21,11 @@ import java.time.Instant;
 public record TelemetryPoint(DeviceId deviceId, MetricKey metric, double value, Instant timestamp) {
 
     public TelemetryPoint {
-        if (deviceId == null) {
-            throw new IllegalArgumentException("遙測缺少裝置識別碼");
-        }
-        if (metric == null) {
-            throw new IllegalArgumentException("遙測缺少指標代號");
-        }
-        if (timestamp == null) {
-            throw new IllegalArgumentException("遙測缺少時間戳");
-        }
+        Guard.notNull(deviceId, "遙測的裝置識別碼");
+        Guard.notNull(metric, "遙測的指標代號");
+        Guard.notNull(timestamp, "遙測的時間戳");
         // NaN 與無限大會一路汙染聚合結果：avg 會變成 NaN，而且 SQL 端不會報錯。
         // 在入口擋掉，比事後從連續聚合裡把它挖出來容易得多。
-        if (!Double.isFinite(value)) {
-            throw new IllegalArgumentException("遙測讀數必須是有限數：" + deviceId + "/" + metric);
-        }
+        Guard.finite(value, "遙測讀數 " + deviceId + "/" + metric);
     }
 }

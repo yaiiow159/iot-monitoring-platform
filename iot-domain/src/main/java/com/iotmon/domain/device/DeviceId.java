@@ -1,5 +1,8 @@
 package com.iotmon.domain.device;
 
+import com.iotmon.domain.shared.Identifier;
+
+import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
 
 /**
@@ -11,14 +14,9 @@ public record DeviceId(String value) implements Comparable<DeviceId> {
     private static final Pattern VALID = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9_-]{2,63}$");
 
     public DeviceId {
-        if (value == null) {
-            throw new IllegalArgumentException("裝置識別碼不可為 null");
-        }
-        value = value.trim();
-        if (!VALID.matcher(value).matches()) {
-            throw new IllegalArgumentException(
-                    "裝置識別碼只允許英數、底線與連字號，長度 3~64：" + value);
-        }
+        // 裝置識別碼保留大小寫：它是裝置自己宣告的名字，改動會讓對帳對不上
+        value = Identifier.validated(value, UnaryOperator.identity(), VALID,
+                "裝置識別碼", "英數、底線與連字號、3~64 字");
     }
 
     public static DeviceId of(String value) {
