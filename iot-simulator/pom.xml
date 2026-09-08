@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.iotmon</groupId>
+        <artifactId>iot-monitoring-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>iot-simulator</artifactId>
+    <name>iot-simulator</name>
+    <description>裝置模擬器：依機型產生遙測、模擬斷線與異常，作為壓測負載來源</description>
+
+    <!--
+        獨立的 Spring Boot 應用，刻意不依賴 iot-application 或 iot-infrastructure。
+        模擬器只該透過 MQTT 與平台溝通，跟真實裝置一樣；
+        若它能直接呼叫平台的內部程式碼，壓測就不再代表真實路徑。
+        它只依賴 domain 取得機型與指標的定義，避免兩邊各寫一份。
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>com.iotmon</groupId>
+            <artifactId>iot-domain</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.hivemq</groupId>
+            <artifactId>hivemq-mqtt-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>iot-simulator</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -1,0 +1,11 @@
+target/
+*.iml
+.idea/
+.vscode/
+node_modules/
+build/
+dist/
+*.log
+.env
+.env.*
+benchmark/results/
