@@ -206,3 +206,22 @@ Device 的父節點只能是 Sensor、Device 不能有子節點。
 
 WebSocket 的 `alarm` 推播會多帶 `ancestorIds`（由上到下），
 前端據此更新整條路徑上的節點，而不是只更新葉節點。
+
+---
+
+## 實作狀態（2026-09-09）
+
+契約先於實作寫定，所以這張表說明「現在哪些端點真的在」。前端在 mock 模式下涵蓋全部契約；
+切到真實 API 時，未實作的端點會讓對應畫面顯示載入失敗，這是預期行為，不是 bug。
+
+| 端點 | 狀態 |
+|---|---|
+| `GET /telemetry` | ✅ 三層路由、resolution 欄位、400 拒絕過大範圍 |
+| `GET /tree`、`/tree/{id}`、`/tree/{id}/ancestors`、`POST /tree/nodes`、`PATCH …/order` | ✅ |
+| WebSocket `/ws/live`（telemetry 節流、status、alarm 帶 ancestorIds） | ✅ |
+| `GET /overview` | ❌ 總覽頁在真實模式下為空 |
+| `GET /devices`、`GET /devices/{id}` | ❌ |
+| `GET /models`、`GET /cabinets`、`GET /alarm-rules` 及其 POST | ❌ 設定資料目前只能直接寫資料庫 |
+| `GET /alarms` | ❌ 告警列表；告警本身已由引擎產生並推播 |
+
+未實作的部分全是「讀設定表回 JSON」這一類，沒有設計上的難點，是工作量問題。
