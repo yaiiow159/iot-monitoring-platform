@@ -142,6 +142,46 @@ export interface DeviceQuery {
   modelCode?: string;
 }
 
+// -------------------------------------------------------------- 監控樹
+
+/** Equipment 只能在根、Sensor 可無限自我嵌套、Device 是葉節點；規則由後端強制。 */
+export type NodeKind = 'EQUIPMENT' | 'SENSOR' | 'DEVICE';
+
+/**
+ * 節點自己與整個子樹裡未解除告警的最高嚴重度與數量。
+ * severity 為 null 代表子樹內沒有任何未解除告警。
+ */
+export interface Rollup {
+  severity: AlarmSeverity | null;
+  firing: number;
+}
+
+export interface TreeNode {
+  id: number;
+  kind: NodeKind;
+  name: string;
+  /** 同層排序鍵，之間留有間隔（預設 1000），插入中間不必重編整層。 */
+  sortOrder: number;
+  /** 只有 DEVICE 節點才有，指向裝置詳情頁。 */
+  deviceId?: string;
+  rollup: Rollup;
+  /** 後端已依 (sortOrder, id) 排好；前端直接照陣列順序渲染，不得再排序。 */
+  children: TreeNode[];
+}
+
+/** `/tree/{id}/ancestors` 回的路徑節點：只有節點本身，不帶子樹。 */
+export type TreePathNode = Omit<TreeNode, 'children'>;
+
+export interface CreateNodeRequest {
+  kind: NodeKind;
+  name: string;
+  /** Equipment 不能有父節點，傳 null。 */
+  parentId: number | null;
+  deviceId?: string;
+  /** 不指定就排在同層最後。 */
+  sortOrder?: number;
+}
+
 // -------------------------------------------------------------- WebSocket
 
 export interface LiveTelemetryEvent {
@@ -165,6 +205,11 @@ export interface LiveAlarmEvent {
   severity: AlarmSeverity;
   state: AlarmState;
   ts: number;
+  /**
+   * 監控樹上從根到該裝置節點的路徑（由上到下，含裝置節點本身）。
+   * 前端據此重抓整條鏈的 rollup，而不是只更新葉節點；裝置不在樹上時為空陣列。
+   */
+  ancestorIds: number[];
 }
 
 export type LiveEvent = LiveTelemetryEvent | LiveStatusEvent | LiveAlarmEvent;
@@ -202,5 +247,12 @@ export interface IotApi {
   listAlarmRules(): Promise<AlarmRule[]>;
   createAlarmRule(rule: CreateAlarmRuleRequest): Promise<AlarmRule>;
   queryTelemetry(query: TelemetryQuery): Promise<TelemetrySeries>;
+  /** 整棵樹的根節點清單（每個 Equipment 一棵），已排序、含 rollup。 */
+  getTree(): Promise<TreeNode[]>;
+  getSubtree(nodeId: number): Promise<TreeNode>;
+  /** 從根到該節點的路徑，由上到下。 */
+  getAncestors(nodeId: number): Promise<TreePathNode[]>;
+  createNode(request: CreateNodeRequest): Promise<TreeNode>;
+  reorderNode(nodeId: number, sortOrder: number): Promise<TreeNode>;
   connectLive(handlers: LiveSocketHandlers): LiveSocket;
 }

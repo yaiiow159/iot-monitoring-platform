@@ -4,6 +4,7 @@ import type {
   AlarmState,
   Cabinet,
   CreateAlarmRuleRequest,
+  CreateNodeRequest,
   Device,
   DeviceModel,
   DeviceQuery,
@@ -15,6 +16,8 @@ import type {
   SubscribeMessage,
   TelemetryQuery,
   TelemetrySeries,
+  TreeNode,
+  TreePathNode,
 } from './types';
 
 /** 留空時走 vite dev proxy 的相對路徑，免得開發與正式各記一組網址。 */
@@ -165,6 +168,22 @@ export const httpApi: IotApi = {
         maxPoints: query.maxPoints,
       })}`,
     ),
+
+  // 監控樹：子節點順序由後端以 (sortOrder, id) 保證，這裡原封不動回傳，不做任何排序。
+  getTree: () => request<TreeNode[]>('/tree'),
+
+  getSubtree: (nodeId: number) => request<TreeNode>(`/tree/${nodeId}`),
+
+  getAncestors: (nodeId: number) => request<TreePathNode[]>(`/tree/${nodeId}/ancestors`),
+
+  createNode: (body: CreateNodeRequest) =>
+    request<TreeNode>('/tree/nodes', { method: 'POST', body: JSON.stringify(body) }),
+
+  reorderNode: (nodeId: number, sortOrder: number) =>
+    request<TreeNode>(`/tree/nodes/${nodeId}/order`, {
+      method: 'PATCH',
+      body: JSON.stringify({ sortOrder }),
+    }),
 
   connectLive: (handlers: LiveSocketHandlers) => new ReconnectingLiveSocket(handlers),
 };

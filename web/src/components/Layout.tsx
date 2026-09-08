@@ -24,6 +24,9 @@ export function Layout() {
           <NavLink to="/" end className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
             總覽
           </NavLink>
+          <NavLink to="/tree" className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
+            監控樹
+          </NavLink>
           <NavLink
             to="/config"
             className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}

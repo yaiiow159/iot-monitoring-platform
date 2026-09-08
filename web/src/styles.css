@@ -1285,3 +1285,365 @@ input[type='number'].input {
     transition: none !important;
   }
 }
+
+/* ------------------------------------------------------------ 監控樹 */
+
+.tree-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+@media (max-width: 1180px) {
+  .tree-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 樹自己捲，右側詳情固定在視野內，點深處的節點時不用來回捲頁面 */
+.tree-scroll {
+  overflow: auto;
+  max-height: calc(100vh - 230px);
+  border-radius: var(--radius-sm);
+}
+
+.tree-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* 每一層縮排一格，左側一條導線；導線顏色跟父節點的 rollup 走，
+   告警從葉節點往上冒時，那一路的導線會一路亮到根 */
+.tree-children:not(.tree-root) {
+  margin-left: 11px;
+  padding-left: 14px;
+  box-shadow: inset 1px 0 0 var(--line-strong);
+  transition: box-shadow var(--t-base) var(--ease);
+}
+.tree-children.guide-INFO {
+  box-shadow: inset 1px 0 0 rgba(var(--info-rgb), 0.55);
+}
+.tree-children.guide-WARNING {
+  box-shadow: inset 1px 0 0 rgba(var(--degraded-rgb), 0.6);
+}
+.tree-children.guide-CRITICAL {
+  box-shadow: inset 1px 0 0 rgba(var(--offline-rgb), 0.7);
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px 0 2px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--t-fast) var(--ease);
+}
+.tree-row:hover {
+  background: var(--surface-2);
+}
+.tree-row.is-selected {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.tree-row:focus-visible {
+  outline-offset: -2px;
+}
+
+/* 展開箭頭用 CSS 畫，Device 沒有箭頭但留同樣寬度讓文字對齊 */
+.tree-toggle,
+.tree-spacer {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+.tree-toggle {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  position: relative;
+  border-radius: var(--radius-sm);
+}
+.tree-toggle::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 6px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--text-3);
+  border-bottom: 1.5px solid var(--text-3);
+  transform: rotate(-45deg);
+  transition:
+    transform var(--t-base) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+.tree-toggle.open::before {
+  transform: rotate(45deg);
+  top: 4px;
+}
+.tree-toggle:hover::before {
+  border-color: var(--text-1);
+}
+
+/* 三種 kind 靠形狀分辨：設備是實心方塊、感測層是描邊圓角、裝置是圓點；
+   顏色一律中性，畫面上只有嚴重度可以是彩色的 */
+.kind {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text-2);
+}
+.kind-EQUIPMENT {
+  background: var(--surface-3);
+  color: var(--text-1);
+  border-radius: 3px;
+}
+.kind-SENSOR {
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.kind-DEVICE {
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  color: var(--text-3);
+}
+.kind-lg {
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+}
+
+.tree-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-sev-NONE .tree-name {
+  color: var(--text-2);
+}
+.tree-row.is-selected .tree-name {
+  color: var(--text-1);
+}
+.tree-node > .tree-row .kind-EQUIPMENT + .tree-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.tree-device {
+  color: var(--text-3);
+}
+.tree-count {
+  color: var(--text-3);
+}
+
+.rollup {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.rollup-count {
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+/* rollup 色點：沒告警是一顆暗色的空點，有告警才亮起並發光——安靜時畫面要安靜 */
+.rollup-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  display: inline-block;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  transition:
+    background var(--t-base) var(--ease),
+    box-shadow var(--t-base) var(--ease);
+}
+.rollup-INFO .rollup-dot,
+.rollup-dot.rollup-INFO {
+  background: var(--info);
+  box-shadow: 0 0 0 3px rgba(var(--info-rgb), 0.18);
+}
+.rollup-WARNING .rollup-dot,
+.rollup-dot.rollup-WARNING {
+  background: var(--warning);
+  box-shadow: 0 0 0 3px rgba(var(--degraded-rgb), 0.2);
+}
+.rollup-CRITICAL .rollup-dot,
+.rollup-dot.rollup-CRITICAL {
+  background: var(--critical);
+  box-shadow: 0 0 0 3px rgba(var(--offline-rgb), 0.22);
+}
+.rollup-INFO .rollup-count {
+  color: var(--info);
+}
+.rollup-WARNING .rollup-count {
+  color: var(--warning);
+}
+.rollup-CRITICAL .rollup-count {
+  color: var(--critical);
+}
+
+/* 收到推播、子樹還沒重抓回來：整條鏈的色點呼吸，表示這個數字暫時不可信 */
+.tree-row.is-stale .rollup-dot {
+  animation: pulse 700ms ease-in-out infinite;
+}
+
+/* 重抓回來後由葉往根依序閃一次，動畫延遲由程式依層數給，眼睛跟得上「從哪裡冒上來」 */
+.tree-row.is-bubbling {
+  animation: row-in 1400ms var(--ease) 1 both;
+}
+.tree-row.is-bubbling .rollup-dot {
+  animation: rollup-in 900ms var(--ease) 1 both;
+}
+@keyframes rollup-in {
+  0% {
+    transform: scale(1.8);
+    box-shadow: 0 0 0 10px rgba(var(--offline-rgb), 0.45);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.tree-empty {
+  margin: 0;
+  padding: 4px 0 6px 36px;
+  color: var(--text-3);
+  font-size: var(--fs-caption);
+}
+
+/* ---- 右側詳情 */
+
+.tree-detail {
+  position: sticky;
+  top: 0;
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+.crumb-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+.crumb-sep {
+  width: 5px;
+  height: 5px;
+  margin: 0 4px;
+  border-right: 1.5px solid var(--text-3);
+  border-bottom: 1.5px solid var(--text-3);
+  transform: rotate(-45deg);
+}
+.crumb {
+  background: transparent;
+  border: none;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: var(--text-2);
+  font-size: var(--fs-data);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition:
+    background var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+.crumb:hover {
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+.crumb.is-current {
+  color: var(--text-1);
+  font-weight: 500;
+}
+
+.tree-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.tree-title h1 {
+  font-size: 22px;
+}
+
+.tree-facts {
+  margin: 0 0 14px;
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+.tree-facts dt {
+  margin-bottom: 2px;
+}
+
+/* 未解除數是這一頁的主角數字，字級跟裝置詳情的指標值一樣 */
+.tree-firing {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.tree-firing.sev-NONE {
+  color: var(--text-3);
+}
+
+.tree-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.tree-actions .hint {
+  margin: 0;
+}
+
+.tree-section {
+  margin-top: 16px;
+  padding-top: 14px;
+  box-shadow: inset 0 1px 0 var(--line);
+}
+.tree-section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.tree-section-head .btn-primary {
+  margin-left: auto;
+  align-self: center;
+  text-decoration: none;
+  padding: 5px 12px;
+}
+
+.tree-child-row {
+  cursor: pointer;
+}

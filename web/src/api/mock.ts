@@ -4,6 +4,7 @@ import type {
   AlarmSeverity,
   Cabinet,
   CabinetType,
+  CreateNodeRequest,
   Device,
   DeviceModel,
   DeviceQuery,
@@ -11,12 +12,15 @@ import type {
   IotApi,
   LiveSocket,
   LiveSocketHandlers,
+  NodeKind,
   Overview,
   Resolution,
   SubscribeMessage,
   TelemetryPoint,
   TelemetryQuery,
   TelemetrySeries,
+  TreeNode,
+  TreePathNode,
 } from './types';
 
 /**
@@ -181,10 +185,15 @@ const ALARM_TEXT: Record<string, string> = {
 
 let alarmSeq = 1000;
 
-function makeAlarm(device: Device, state: 'FIRING' | 'RESOLVED', ageMs: number): Alarm {
+function makeAlarm(
+  device: Device,
+  state: 'FIRING' | 'RESOLVED',
+  ageMs: number,
+  severityOverride?: AlarmSeverity,
+): Alarm {
   const model = MODEL_BY_CODE.get(device.modelCode)!;
   const metric = pick(model.metrics, `${device.deviceId}:alarmMetric:${ageMs}`);
-  const severity = pick(SEVERITIES, `${device.deviceId}:sev:${ageMs}`);
+  const severity = severityOverride ?? pick(SEVERITIES, `${device.deviceId}:sev:${ageMs}`);
   const firedAt = Date.now() - ageMs;
   const threshold = metric.minValue + (metric.maxValue - metric.minValue) * 0.8;
   return {
@@ -399,6 +408,258 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ------------------------------------------------------- 監控樹
+
+/** 樹的節點只存扁平結構與 parentId；children 與 rollup 每次查詢時從子樹重算，行為與後端一致。 */
+interface FlatNode {
+  id: number;
+  kind: NodeKind;
+  name: string;
+  parentId: number | null;
+  sortOrder: number;
+  deviceId?: string;
+}
+
+const treeNodes: FlatNode[] = [];
+let nextNodeId = 1;
+
+const SORT_GAP = 1000;
+
+/** 描述用的樹形規格：sensors 可以無限嵌套，devices 是這一層底下要掛的裝置名稱。 */
+interface TreeSpec {
+  name: string;
+  sensors?: TreeSpec[];
+  devices?: string[];
+}
+
+const TREE_SPEC: TreeSpec[] = [
+  {
+    name: '1 號變電站',
+    sensors: [
+      {
+        name: 'A 相',
+        sensors: [
+          {
+            name: '一次側',
+            sensors: [
+              {
+                name: '溫度監測',
+                sensors: [
+                  { name: '測點 1', devices: ['繞組溫度計', '油溫計'] },
+                  { name: '測點 2', devices: ['繞組溫度計'] },
+                ],
+              },
+              { name: '電流量測', devices: ['電流計', '零序電流計'] },
+            ],
+          },
+          { name: '二次側', devices: ['電壓計', '電流計', '功率因數計'] },
+        ],
+      },
+      {
+        name: 'B 相',
+        sensors: [
+          { name: '一次側', devices: ['電流計', '電壓計'] },
+          { name: '二次側', devices: ['電流計', '電壓計'] },
+        ],
+      },
+      {
+        name: 'C 相',
+        sensors: [{ name: '一次側', devices: ['電流計', '電壓計', '溫度計'] }],
+      },
+      { name: '環境', devices: ['室溫計', '濕度計', '煙霧偵測器'] },
+    ],
+  },
+  {
+    name: '2 號變電站',
+    sensors: [
+      {
+        name: '主變壓器',
+        sensors: [
+          { name: '高壓側', devices: ['電壓計', '電流計', '避雷器監測'] },
+          { name: '低壓側', devices: ['電壓計', '電流計'] },
+          {
+            name: '冷卻',
+            sensors: [
+              { name: '風扇群 1', devices: ['轉速計 1', '轉速計 2'] },
+              { name: '風扇群 2', devices: ['轉速計 1', '轉速計 2', '轉速計 3'] },
+            ],
+          },
+        ],
+      },
+      { name: '配電盤', devices: ['總電表', '分路電表 1', '分路電表 2', '分路電表 3'] },
+      { name: '環境', devices: ['室溫計', '濕度計'] },
+    ],
+  },
+  {
+    name: '冷卻水塔系統',
+    sensors: [
+      {
+        name: '1 號塔',
+        sensors: [
+          { name: '進水', devices: ['流量計', '水溫計', '壓力計'] },
+          { name: '出水', devices: ['流量計', '水溫計'] },
+          { name: '風機', devices: ['轉速計', '振動計'] },
+        ],
+      },
+      {
+        name: '2 號塔',
+        sensors: [
+          { name: '進水', devices: ['流量計', '水溫計'] },
+          { name: '出水', devices: ['流量計', '水溫計'] },
+          { name: '風機', devices: ['轉速計', '振動計', '軸溫計'] },
+        ],
+      },
+      { name: '水質', devices: ['pH 計', '導電度計'] },
+    ],
+  },
+];
+
+/** 從一萬台裝置裡跳著挑，讓樹上的裝置散在不同機櫃，而不是全擠在前幾櫃。 */
+let treeDeviceCursor = 0;
+function nextTreeDevice(): Device {
+  treeDeviceCursor += 137;
+  return devices[treeDeviceCursor % devices.length];
+}
+
+function addFlatNode(kind: NodeKind, name: string, parentId: number | null, deviceId?: string): FlatNode {
+  const last = treeNodes
+    .filter((n) => n.parentId === parentId)
+    .reduce((max, n) => Math.max(max, n.sortOrder), 0);
+  const node: FlatNode = { id: nextNodeId++, kind, name, parentId, sortOrder: last + SORT_GAP, deviceId };
+  treeNodes.push(node);
+  return node;
+}
+
+function buildSpec(spec: TreeSpec, parentId: number | null, kind: NodeKind): void {
+  const node = addFlatNode(kind, spec.name, parentId);
+  for (const child of spec.sensors ?? []) buildSpec(child, node.id, 'SENSOR');
+  for (const deviceName of spec.devices ?? []) {
+    addFlatNode('DEVICE', deviceName, node.id, nextTreeDevice().deviceId);
+  }
+}
+for (const spec of TREE_SPEC) buildSpec(spec, null, 'EQUIPMENT');
+
+function descendantIds(rootId: number): number[] {
+  const out: number[] = [];
+  const stack = [rootId];
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    out.push(id);
+    for (const n of treeNodes) if (n.parentId === id) stack.push(n.id);
+  }
+  return out;
+}
+
+/** 從根到該節點的路徑，由上到下（含節點本身）。 */
+function pathTo(nodeId: number): FlatNode[] {
+  const path: FlatNode[] = [];
+  let cur = treeNodes.find((n) => n.id === nodeId);
+  while (cur) {
+    path.unshift(cur);
+    const parentId = cur.parentId;
+    cur = parentId === null ? undefined : treeNodes.find((n) => n.id === parentId);
+  }
+  return path;
+}
+
+const nodeByDeviceId = new Map<string, FlatNode>();
+for (const n of treeNodes) if (n.deviceId) nodeByDeviceId.set(n.deviceId, n);
+
+/** 推播用：裝置不在樹上就回空陣列，前端據此略過。 */
+function ancestorIdsOfDevice(deviceId: string): number[] {
+  const node = nodeByDeviceId.get(deviceId);
+  return node ? pathTo(node.id).map((n) => n.id) : [];
+}
+
+/**
+ * 讓樹上有代表性的告警分布：1 號變電站最深那條鏈是 CRITICAL、2 號變電站有 WARNING 與 INFO，
+ * 冷卻水塔系統保持安靜——它是推播示範「告警上浮」時要點亮的那條分支。
+ */
+{
+  const byPath = (path: string[]): FlatNode | undefined => {
+    let parentId: number | null = null;
+    let found: FlatNode | undefined;
+    for (const name of path) {
+      found = treeNodes.find((n) => n.parentId === parentId && n.name === name);
+      if (!found) return undefined;
+      parentId = found.id;
+    }
+    return found;
+  };
+  const quietIds = new Set(descendantIds(byPath(['冷卻水塔系統'])!.id));
+  for (const n of treeNodes) {
+    if (!quietIds.has(n.id) || !n.deviceId) continue;
+    for (const a of alarms) if (a.deviceId === n.deviceId && a.state === 'FIRING') a.state = 'RESOLVED';
+  }
+  const force: Array<[string[], AlarmSeverity]> = [
+    [['1 號變電站', 'A 相', '一次側', '溫度監測', '測點 1', '繞組溫度計'], 'CRITICAL'],
+    [['1 號變電站', 'A 相', '一次側', '溫度監測', '測點 1', '油溫計'], 'WARNING'],
+    [['1 號變電站', 'A 相', '二次側', '功率因數計'], 'WARNING'],
+    [['1 號變電站', 'C 相', '一次側', '溫度計'], 'INFO'],
+    [['2 號變電站', '主變壓器', '冷卻', '風扇群 2', '轉速計 3'], 'WARNING'],
+    [['2 號變電站', '配電盤', '分路電表 2'], 'INFO'],
+  ];
+  for (const [path, severity] of force) {
+    const node = byPath(path);
+    const device = node?.deviceId ? deviceById.get(node.deviceId) : undefined;
+    if (!device) continue;
+    if (!alarms.some((a) => a.deviceId === device.deviceId && a.state === 'FIRING' && a.severity === severity)) {
+      alarms.push(
+        makeAlarm(device, 'FIRING', Math.floor(hash(`${device.deviceId}:treeAge`) * 3_600_000), severity),
+      );
+    }
+  }
+}
+
+/** 契約：所有回傳子節點的地方一律以 (sortOrder, id) 排序，id 是決定性的平手判斷。 */
+function sortedChildren(parentId: number | null): FlatNode[] {
+  return treeNodes
+    .filter((n) => n.parentId === parentId)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+}
+
+const ROLLUP_RANK: Record<AlarmSeverity, number> = { INFO: 1, WARNING: 2, CRITICAL: 3 };
+
+function firingIndex(): Map<string, AlarmSeverity[]> {
+  const map = new Map<string, AlarmSeverity[]>();
+  for (const a of alarms) {
+    if (a.state !== 'FIRING') continue;
+    const list = map.get(a.deviceId);
+    if (list) list.push(a.severity);
+    else map.set(a.deviceId, [a.severity]);
+  }
+  return map;
+}
+
+/** rollup 由子樹重新計算而不是遞增遞減，解除一則告警後父節點不會出現錯誤的綠燈。 */
+function materialize(node: FlatNode, firingByDevice: Map<string, AlarmSeverity[]>): TreeNode {
+  const children = sortedChildren(node.id).map((c) => materialize(c, firingByDevice));
+  let firing = 0;
+  let severity: AlarmSeverity | null = null;
+  const bump = (sev: AlarmSeverity) => {
+    if (!severity || ROLLUP_RANK[sev] > ROLLUP_RANK[severity]) severity = sev;
+  };
+  if (node.kind === 'DEVICE' && node.deviceId) {
+    for (const sev of firingByDevice.get(node.deviceId) ?? []) {
+      firing++;
+      bump(sev);
+    }
+  }
+  for (const c of children) {
+    firing += c.rollup.firing;
+    if (c.rollup.severity) bump(c.rollup.severity);
+  }
+  return {
+    id: node.id,
+    kind: node.kind,
+    name: node.name,
+    sortOrder: node.sortOrder,
+    ...(node.deviceId ? { deviceId: node.deviceId } : {}),
+    rollup: { severity, firing },
+    children,
+  };
+}
+
 // ------------------------------------------------------- 假的即時推播
 
 /**
@@ -410,6 +671,7 @@ class MockLiveSocket implements LiveSocket {
   private subscribed: string[] = [];
   private timer: number | null = null;
   private closed = false;
+  private ticks = 0;
 
   constructor(private readonly handlers: LiveSocketHandlers) {
     // 非同步觸發 onOpen，行為與真實 WebSocket 一致（建構當下還沒連上）。
@@ -423,6 +685,7 @@ class MockLiveSocket implements LiveSocket {
   private tick(): void {
     const ids = this.subscribed;
     if (ids.length === 0) return;
+    this.ticks++;
 
     // 一秒最多推 400 台，模擬後端的推播上限，也避免 mock 自己把瀏覽器拖垮。
     const budget = Math.min(ids.length, 400);
@@ -452,19 +715,41 @@ class MockLiveSocket implements LiveSocket {
     if (Math.random() < 0.03) {
       const deviceId = ids[Math.floor(Math.random() * ids.length)];
       const device = deviceById.get(deviceId);
-      if (device) {
-        const alarm = makeAlarm(device, 'FIRING', 0);
-        alarms.unshift(alarm);
-        this.handlers.onEvent({
-          type: 'alarm',
-          alarmId: alarm.alarmId,
-          deviceId,
-          severity: alarm.severity,
-          state: 'FIRING',
-          ts: now,
+      if (device) this.fireAlarm(device, undefined, now);
+    }
+
+    // 監控樹在看的時候，每 12 秒挑一台「所在 Equipment 目前整棵安靜」的樹上裝置響一則，
+    // 讓告警從葉節點一路亮到根的上浮效果看得到，不必等隨機命中。
+    if (this.ticks % 12 === 0) {
+      const firing = firingIndex();
+      const quiet = ids.filter((id) => {
+        const node = nodeByDeviceId.get(id);
+        if (!node) return false;
+        return !descendantIds(pathTo(node.id)[0].id).some((nid) => {
+          const d = treeNodes.find((n) => n.id === nid)?.deviceId;
+          return d !== undefined && firing.has(d);
         });
+      });
+      const pool = quiet.length > 0 ? quiet : ids.filter((id) => nodeByDeviceId.has(id));
+      if (pool.length > 0) {
+        const device = deviceById.get(pool[Math.floor(Math.random() * pool.length)]);
+        if (device) this.fireAlarm(device, Math.random() < 0.5 ? 'CRITICAL' : 'WARNING', now);
       }
     }
+  }
+
+  private fireAlarm(device: Device, severity: AlarmSeverity | undefined, now: number): void {
+    const alarm = makeAlarm(device, 'FIRING', 0, severity);
+    alarms.unshift(alarm);
+    this.handlers.onEvent({
+      type: 'alarm',
+      alarmId: alarm.alarmId,
+      deviceId: device.deviceId,
+      severity: alarm.severity,
+      state: 'FIRING',
+      ts: now,
+      ancestorIds: ancestorIdsOfDevice(device.deviceId),
+    });
   }
 
   send(message: SubscribeMessage): void {
@@ -560,6 +845,53 @@ export const mockApi: IotApi = {
   },
 
   queryTelemetry,
+
+  async getTree() {
+    await delay(90);
+    const firing = firingIndex();
+    return sortedChildren(null).map((root) => materialize(root, firing));
+  },
+
+  async getSubtree(nodeId: number) {
+    await delay(70);
+    const node = treeNodes.find((n) => n.id === nodeId);
+    if (!node) throw new Error(`找不到節點 ${nodeId}`);
+    return materialize(node, firingIndex());
+  },
+
+  async getAncestors(nodeId: number) {
+    await delay(40);
+    const firing = firingIndex();
+    return pathTo(nodeId).map((n): TreePathNode => {
+      const { children: _children, ...rest } = materialize(n, firing);
+      return rest;
+    });
+  },
+
+  async createNode(request: CreateNodeRequest) {
+    await delay(100);
+    const parent = request.parentId === null ? null : treeNodes.find((n) => n.id === request.parentId);
+    if (request.parentId !== null && !parent) throw new Error('400：父節點不存在');
+    // 與後端相同的結構規則，違反直接拒絕，前端不該有機會做出不合法的樹。
+    if (request.kind === 'EQUIPMENT' && parent) throw new Error('400：Equipment 只能在根');
+    if (request.kind !== 'EQUIPMENT' && !parent) throw new Error('400：Sensor／Device 必須有父節點');
+    if (parent?.kind === 'DEVICE') throw new Error('400：Device 不能有子節點');
+    if (request.kind === 'DEVICE' && parent?.kind !== 'SENSOR') {
+      throw new Error('400：Device 的父節點只能是 Sensor');
+    }
+    const node = addFlatNode(request.kind, request.name, request.parentId, request.deviceId);
+    if (request.sortOrder !== undefined) node.sortOrder = request.sortOrder;
+    if (node.deviceId) nodeByDeviceId.set(node.deviceId, node);
+    return materialize(node, firingIndex());
+  },
+
+  async reorderNode(nodeId: number, sortOrder: number) {
+    await delay(80);
+    const node = treeNodes.find((n) => n.id === nodeId);
+    if (!node) throw new Error(`找不到節點 ${nodeId}`);
+    node.sortOrder = sortOrder;
+    return materialize(node, firingIndex());
+  },
 
   connectLive: (handlers: LiveSocketHandlers) => new MockLiveSocket(handlers),
 };

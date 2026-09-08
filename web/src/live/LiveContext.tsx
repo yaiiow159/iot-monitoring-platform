@@ -24,6 +24,8 @@ export interface LiveAlarmNotice {
   severity: AlarmSeverity;
   state: AlarmState;
   ts: number;
+  /** 監控樹從根到裝置節點的路徑（由上到下）；空陣列代表裝置不在樹上。 */
+  ancestorIds: number[];
 }
 
 interface LiveSnapshot {
@@ -130,7 +132,15 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         } else {
           // 告警只留最近 50 則，大屏上再多也看不完，留著只是佔記憶體。
           buf.alarms = [
-            { alarmId: event.alarmId, deviceId: event.deviceId, severity: event.severity, state: event.state, ts: event.ts },
+            {
+              alarmId: event.alarmId,
+              deviceId: event.deviceId,
+              severity: event.severity,
+              state: event.state,
+              ts: event.ts,
+              // 舊版後端可能還沒帶這個欄位，補成空陣列讓監控樹安全略過。
+              ancestorIds: event.ancestorIds ?? [],
+            },
             ...buf.alarms,
           ].slice(0, 50);
         }

@@ -8,8 +8,9 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': { target: 'http://localhost:8080', changeOrigin: true },
-      '/ws': { target: 'ws://localhost:8080', ws: true },
+      // 8080 常被本機其他服務佔用，API 固定在 8090（與 application.yml、contracts.md 一致）
+      '/api': { target: 'http://localhost:8090', changeOrigin: true },
+      '/ws': { target: 'ws://localhost:8090', ws: true },
     },
   },
   build: {
