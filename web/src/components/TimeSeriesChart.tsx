@@ -17,9 +17,10 @@ interface Props {
   height?: number;
 }
 
-const AVG_COLOR = '#58a6ff';
-const BAND_STROKE = 'rgba(88, 166, 255, 0.28)';
-const BAND_FILL = 'rgba(88, 166, 255, 0.16)';
+/** uPlot 畫在 canvas 上吃不到 CSS 變數，所以開圖前把 token 讀出來，配色才不會跟頁面脫節。 */
+function cssVar(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
 
 export function TimeSeriesChart({ series, unit, height = 260 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -28,6 +29,16 @@ export function TimeSeriesChart({ series, unit, height = 260 }: Props) {
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+
+    const accent = cssVar('--accent');
+    const accentRgb = cssVar('--accent-rgb');
+    const axisText = cssVar('--text-3');
+    const grid = cssVar('--line');
+    const mono = cssVar('--font-mono');
+    const body = cssVar('--font-body');
+
+    const bandStroke = `rgba(${accentRgb}, 0.3)`;
+    const bandFill = `rgba(${accentRgb}, 0.12)`;
 
     const xs = series.points.map((p) => Date.parse(p.t) / 1000);
     const avg = series.points.map((p) => p.avg);
@@ -46,33 +57,35 @@ export function TimeSeriesChart({ series, unit, height = 260 }: Props) {
     const uSeries: uPlot.Series[] = hasBand
       ? [
           {},
-          { label: '最高', stroke: BAND_STROKE, width: 1, points: { show: false } },
-          { label: '最低', stroke: BAND_STROKE, width: 1, points: { show: false } },
-          { label: '平均', stroke: AVG_COLOR, width: 1.6, points: { show: false } },
+          { label: '最高', stroke: bandStroke, width: 1, points: { show: false } },
+          { label: '最低', stroke: bandStroke, width: 1, points: { show: false } },
+          { label: '平均', stroke: accent, width: 1.6, points: { show: false } },
         ]
-      : [{}, { label: '讀數', stroke: AVG_COLOR, width: 1.4, points: { show: false } }];
+      : [{}, { label: '讀數', stroke: accent, width: 1.4, points: { show: false } }];
+
+    const axisFont = `11px ${mono}`;
 
     const opts: uPlot.Options = {
       width: host.clientWidth || 640,
       height,
       series: uSeries,
       // bands 填滿「最高」與「最低」兩條線之間，形成量程帶。
-      bands: hasBand ? [{ series: [1, 2], fill: BAND_FILL }] : undefined,
+      bands: hasBand ? [{ series: [1, 2], fill: bandFill }] : undefined,
       axes: [
         {
-          stroke: '#8b98a5',
-          grid: { stroke: '#212a35', width: 1 },
-          ticks: { stroke: '#212a35' },
-          font: '11px ui-monospace, monospace',
+          stroke: axisText,
+          grid: { stroke: grid, width: 1 },
+          ticks: { stroke: grid, width: 1 },
+          font: axisFont,
         },
         {
-          stroke: '#8b98a5',
-          grid: { stroke: '#212a35', width: 1 },
-          ticks: { stroke: '#212a35' },
-          font: '11px ui-monospace, monospace',
+          stroke: axisText,
+          grid: { stroke: grid, width: 1 },
+          ticks: { stroke: grid, width: 1 },
+          font: axisFont,
           label: unit || undefined,
           labelSize: unit ? 24 : 0,
-          labelFont: '11px system-ui',
+          labelFont: `11px ${body}`,
         },
       ],
       cursor: { drag: { x: true, y: false } },

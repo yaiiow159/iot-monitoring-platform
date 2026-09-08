@@ -43,32 +43,40 @@ export function CabinetGrid({ cabinets, devicesByCabinet, liveStatuses, firingDe
               </div>
             </header>
 
-            <div className="slots">
-              {Array.from({ length: cabinet.slotCount }, (_, i) => {
-                const slot = i + 1;
-                const device = bySlot.get(slot);
-                if (!device) {
-                  return <span key={slot} className="slot slot-empty" title={`槽位 ${slot}：空`} />;
-                }
-                const status = liveStatuses[device.deviceId] ?? device.status;
-                const alarming = firingDeviceIds.has(device.deviceId);
-                return (
-                  <button
-                    key={slot}
-                    type="button"
-                    className={`slot slot-${status}${alarming ? ' slot-alarm' : ''}`}
-                    title={`槽位 ${slot}｜${device.deviceId}｜${device.modelCode}｜${STATUS_LABEL[status]}${alarming ? '｜有未解除告警' : ''}`}
-                    onClick={() => navigate(`/devices/${device.deviceId}`)}
-                  />
-                );
-              })}
+            {/* 兩側導軌純粹是視覺：讓這個格子讀起來像機櫃正面，而不是一張熱力圖 */}
+            <div className="rack" aria-label={`${cabinet.id} 槽位`}>
+              <span className="rail" aria-hidden="true" />
+              <div className="slots">
+                {Array.from({ length: cabinet.slotCount }, (_, i) => {
+                  const slot = i + 1;
+                  const device = bySlot.get(slot);
+                  if (!device) {
+                    return <span key={slot} className="slot slot-empty" title={`槽位 ${slot}：空`} />;
+                  }
+                  const status = liveStatuses[device.deviceId] ?? device.status;
+                  const alarming = firingDeviceIds.has(device.deviceId);
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      className={`slot slot-${status}${alarming ? ' slot-alarm' : ''}`}
+                      title={`槽位 ${slot}｜${device.deviceId}｜${device.modelCode}｜${STATUS_LABEL[status]}${alarming ? '｜有未解除告警' : ''}`}
+                      onClick={() => navigate(`/devices/${device.deviceId}`)}
+                    />
+                  );
+                })}
+              </div>
+              <span className="rail" aria-hidden="true" />
             </div>
 
             <footer className="cabinet-foot">
               <span className="sub">
                 {devices.length}/{cabinet.slotCount} 槽位使用
               </span>
-              <span className={`dot dot-${health}`} title={`整櫃狀態：${STATUS_LABEL[health]}`} />
+              <span className="cabinet-health" title={`整櫃狀態：${STATUS_LABEL[health]}`}>
+                <span className={`dot dot-${health}`} />
+                {STATUS_LABEL[health]}
+              </span>
             </footer>
           </section>
         );

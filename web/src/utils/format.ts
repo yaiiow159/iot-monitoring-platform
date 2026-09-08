@@ -9,17 +9,15 @@ export const STATUS_LABEL: Record<DeviceStatus, string> = {
 
 export const SEVERITY_LABEL: Record<AlarmSeverity, string> = {
   CRITICAL: '嚴重',
-  MAJOR: '重要',
-  MINOR: '次要',
+  WARNING: '警告',
   INFO: '提示',
 };
 
 /** 排序用。數字小的排前面，與後端告警列表的優先順序一致。 */
 export const SEVERITY_ORDER: Record<AlarmSeverity, number> = {
   CRITICAL: 0,
-  MAJOR: 1,
-  MINOR: 2,
-  INFO: 3,
+  WARNING: 1,
+  INFO: 2,
 };
 
 /** 使用者要一眼分辨自己看的是原始值還是聚合值，所以標籤寫得直白。 */
@@ -69,4 +67,5 @@ export const COMPARISON_LABEL: Record<string, string> = {
   GTE: '≥',
   LT: '<',
   LTE: '≤',
+  OUT_OF_RANGE: '∉',
 };

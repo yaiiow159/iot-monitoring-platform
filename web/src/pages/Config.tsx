@@ -44,7 +44,7 @@ function ModelsPanel() {
         {(models.data ?? []).map((m) => (
           <article key={m.code} className="model-card">
             <header>
-              <span className="mono strong">{m.code}</span>
+              <span className="model-code">{m.code}</span>
               <span>{m.displayName}</span>
               <span className="sub">{m.manufacturer}</span>
             </header>
@@ -128,8 +128,23 @@ function CabinetsPanel() {
   );
 }
 
-const SEVERITIES: AlarmSeverity[] = ['CRITICAL', 'MAJOR', 'MINOR', 'INFO'];
-const COMPARISONS: Comparison[] = ['GT', 'GTE', 'LT', 'LTE'];
+const SEVERITIES: AlarmSeverity[] = ['INFO', 'WARNING', 'CRITICAL'];
+const COMPARISONS: Comparison[] = ['GT', 'GTE', 'LT', 'LTE', 'OUT_OF_RANGE'];
+
+/** OUT_OF_RANGE 是區間，顯示成「metric ∉ [a, b]」比「metric ∉ a」誠實。 */
+function describeCondition(rule: {
+  metric: string;
+  comparison: Comparison;
+  threshold: number;
+  secondaryValue?: number | null;
+}): string {
+  if (rule.comparison === 'OUT_OF_RANGE' && rule.secondaryValue != null) {
+    const lo = Math.min(rule.threshold, rule.secondaryValue);
+    const hi = Math.max(rule.threshold, rule.secondaryValue);
+    return `${rule.metric} ${COMPARISON_LABEL.OUT_OF_RANGE} [${lo}, ${hi}]`;
+  }
+  return `${rule.metric} ${COMPARISON_LABEL[rule.comparison]} ${rule.threshold}`;
+}
 
 function RulesPanel() {
   const rules = useAsync(() => api.listAlarmRules(), []);
@@ -141,8 +156,9 @@ function RulesPanel() {
     metric: '',
     comparison: 'GT',
     threshold: 0,
+    secondaryValue: null,
     durationSeconds: 60,
-    severity: 'MAJOR',
+    severity: 'WARNING',
     enabled: true,
   });
   const [submitting, setSubmitting] = useState(false);
@@ -151,13 +167,22 @@ function RulesPanel() {
   const selectedModel = (models.data ?? []).find((m) => m.code === form.modelCode) ?? null;
   const selectedMetric = selectedModel?.metrics.find((m) => m.key === form.metric) ?? null;
 
+  const needsSecondary = form.comparison === 'OUT_OF_RANGE';
+
   /** 門檻落在量程外的規則永遠不會觸發，那是設定錯誤——在送出前就講清楚。 */
+  const outOfScale = (v: number) =>
+    selectedMetric !== null && (v < selectedMetric.minValue || v > selectedMetric.maxValue);
   const thresholdWarning =
-    selectedMetric && (form.threshold < selectedMetric.minValue || form.threshold > selectedMetric.maxValue)
+    selectedMetric && (outOfScale(form.threshold) || (needsSecondary && outOfScale(form.secondaryValue ?? 0)))
       ? `門檻超出 ${selectedMetric.key} 的量程（${selectedMetric.minValue} ~ ${selectedMetric.maxValue}），這條規則可能永遠不會觸發`
       : null;
 
-  const canSubmit = form.name.trim() !== '' && form.modelCode !== '' && form.metric !== '' && !submitting;
+  const canSubmit =
+    form.name.trim() !== '' &&
+    form.modelCode !== '' &&
+    form.metric !== '' &&
+    (!needsSecondary || form.secondaryValue != null) &&
+    !submitting;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -165,9 +190,13 @@ function RulesPanel() {
     setSubmitting(true);
     setMessage(null);
     try {
-      const created = await api.createAlarmRule(form);
+      // 非區間比較不該帶 secondaryValue，後端會把多餘的值當成設定錯誤。
+      const created = await api.createAlarmRule({
+        ...form,
+        secondaryValue: needsSecondary ? form.secondaryValue : null,
+      });
       setMessage(`已新增規則「${created.name}」（#${created.id}）`);
-      setForm({ ...form, name: '', threshold: 0 });
+      setForm({ ...form, name: '', threshold: 0, secondaryValue: null });
       rules.reload();
     } catch (err) {
       setMessage(err instanceof Error ? `新增失敗：${err.message}` : '新增失敗');
@@ -203,9 +232,7 @@ function RulesPanel() {
                   <td className="num mono">{r.id}</td>
                   <td>{r.name}</td>
                   <td className="mono">{r.modelCode}</td>
-                  <td className="mono">
-                    {r.metric} {COMPARISON_LABEL[r.comparison]} {r.threshold}
-                  </td>
+                  <td className="mono">{describeCondition(r)}</td>
                   <td className="num mono">{r.durationSeconds}s</td>
                   <td>
                     <span className={`sev sev-${r.severity}`}>{SEVERITY_LABEL[r.severity]}</span>
@@ -276,14 +303,14 @@ function RulesPanel() {
               >
                 {COMPARISONS.map((c) => (
                   <option key={c} value={c}>
-                    {COMPARISON_LABEL[c]} {c}
+                    {c === 'OUT_OF_RANGE' ? `${COMPARISON_LABEL[c]} 區間外` : `${COMPARISON_LABEL[c]} ${c}`}
                   </option>
                 ))}
               </select>
             </label>
 
             <label className="field">
-              <span>門檻</span>
+              <span>{needsSecondary ? '下界' : '門檻'}</span>
               <input
                 className="input"
                 type="number"
@@ -292,6 +319,24 @@ function RulesPanel() {
                 onChange={(e) => setForm({ ...form, threshold: Number(e.target.value) })}
               />
             </label>
+
+            {needsSecondary && (
+              <label className="field">
+                <span>上界</span>
+                <input
+                  className="input"
+                  type="number"
+                  step="any"
+                  value={form.secondaryValue ?? ''}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      secondaryValue: e.target.value === '' ? null : Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+            )}
 
             <label className="field">
               <span>持續秒數</span>

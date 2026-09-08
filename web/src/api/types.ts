@@ -7,7 +7,8 @@
 /** 與 iot-domain 的 DeviceStatus 一致。 */
 export type DeviceStatus = 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'UNKNOWN';
 
-export type AlarmSeverity = 'CRITICAL' | 'MAJOR' | 'MINOR' | 'INFO';
+/** 與 iot-domain 的 AlarmSeverity 一致：刻意只有三級，分太細值班的人反而不知道要不要起床。 */
+export type AlarmSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
 
 export type AlarmState = 'FIRING' | 'RESOLVED';
 
@@ -16,7 +17,8 @@ export type Resolution = 'raw' | '1m' | '1h';
 
 export type CabinetType = 'POWER' | 'SERVER' | 'SENSOR';
 
-export type Comparison = 'GT' | 'GTE' | 'LT' | 'LTE';
+/** 與 iot-domain 的 Comparison 一致。OUT_OF_RANGE 需要 secondaryValue 當另一個邊界。 */
+export type Comparison = 'GT' | 'GTE' | 'LT' | 'LTE' | 'OUT_OF_RANGE';
 
 // ---------------------------------------------------------------- 設定中心
 
@@ -60,6 +62,8 @@ export interface AlarmRule {
   metric: string;
   comparison: Comparison;
   threshold: number;
+  /** 只有 OUT_OF_RANGE 用到：與 threshold 一起構成區間的上下界。 */
+  secondaryValue?: number | null;
   /** 連續超標多久才觸發，用來濾掉單點雜訊。 */
   durationSeconds: number;
   severity: AlarmSeverity;
@@ -72,6 +76,7 @@ export interface CreateAlarmRuleRequest {
   metric: string;
   comparison: Comparison;
   threshold: number;
+  secondaryValue?: number | null;
   durationSeconds: number;
   severity: AlarmSeverity;
   enabled: boolean;

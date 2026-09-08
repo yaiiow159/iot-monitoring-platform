@@ -16,7 +16,7 @@ export function Layout() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark" />
+          <span className="brand-mark" aria-hidden="true" />
           <span className="brand-name">IoT 裝置監控平台</span>
         </div>
 
@@ -33,8 +33,8 @@ export function Layout() {
         </nav>
 
         <div className="topbar-right">
-          {USE_MOCK && <span className="badge badge-mock">MOCK 資料</span>}
-          <span className="sub" title="只訂閱目前畫面上看得到的裝置">
+          {USE_MOCK && <span className="badge badge-mock">MOCK</span>}
+          <span className="sub num" title="只訂閱目前畫面上看得到的裝置">
             訂閱 {formatInt(subscribedCount)} 台
           </span>
           <span className={`conn conn-${connection}`}>

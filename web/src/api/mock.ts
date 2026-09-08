@@ -166,7 +166,7 @@ for (const d of devices) {
 
 // ------------------------------------------------------- 告警
 
-const SEVERITIES: AlarmSeverity[] = ['CRITICAL', 'MAJOR', 'MINOR', 'INFO'];
+const SEVERITIES: AlarmSeverity[] = ['INFO', 'WARNING', 'CRITICAL'];
 
 const ALARM_TEXT: Record<string, string> = {
   temperature: '溫度超出門檻',
@@ -217,7 +217,7 @@ for (const device of devices) {
   }
 }
 
-const SEVERITY_ORDER: Record<AlarmSeverity, number> = { CRITICAL: 0, MAJOR: 1, MINOR: 2, INFO: 3 };
+const SEVERITY_ORDER: Record<AlarmSeverity, number> = { CRITICAL: 0, WARNING: 1, INFO: 2 };
 
 // ------------------------------------------------------- 告警規則
 
@@ -241,7 +241,7 @@ const alarmRules: AlarmRule[] = [
     comparison: 'GT',
     threshold: 75,
     durationSeconds: 300,
-    severity: 'MAJOR',
+    severity: 'WARNING',
     enabled: true,
   },
   {
@@ -263,7 +263,7 @@ const alarmRules: AlarmRule[] = [
     comparison: 'GTE',
     threshold: 50,
     durationSeconds: 15,
-    severity: 'MAJOR',
+    severity: 'WARNING',
     enabled: true,
   },
   {
@@ -274,7 +274,7 @@ const alarmRules: AlarmRule[] = [
     comparison: 'GTE',
     threshold: 1,
     durationSeconds: 600,
-    severity: 'MINOR',
+    severity: 'INFO',
     enabled: false,
   },
   {
@@ -285,7 +285,19 @@ const alarmRules: AlarmRule[] = [
     comparison: 'GT',
     threshold: 75,
     durationSeconds: 120,
-    severity: 'MINOR',
+    severity: 'INFO',
+    enabled: true,
+  },
+  {
+    id: 7,
+    name: '電壓超出安全區間',
+    modelCode: 'PWR-400',
+    metric: 'voltage',
+    comparison: 'OUT_OF_RANGE',
+    threshold: 200,
+    secondaryValue: 250,
+    durationSeconds: 30,
+    severity: 'WARNING',
     enabled: true,
   },
 ];

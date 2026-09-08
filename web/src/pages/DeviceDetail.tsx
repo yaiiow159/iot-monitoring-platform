@@ -76,25 +76,32 @@ export function DeviceDetail() {
   return (
     <div className="page">
       <section className="panel">
-        <header className="panel-head">
-          <h2>
-            {d.deviceId}
-            <span className="sub"> {d.name}</span>
-          </h2>
-          <div className="panel-tools">
+        <header className="device-head">
+          <div className="device-title">
+            <h1>{d.deviceId}</h1>
+            <span className="device-name">{d.name}</span>
             <span className={`state state-${status}`}>{STATUS_LABEL[status]}</span>
-            <span className="sub">
-              機型 <span className="mono">{d.modelCode}</span>
-            </span>
-            <span className="sub">
-              機櫃{' '}
-              <Link className="link" to="/">
-                {d.cabinetId}
-              </Link>{' '}
-              / 槽位 {d.slot}
-            </span>
-            <span className="sub">最後回報 {formatRelative(live?.ts ?? d.lastSeenAt)}</span>
           </div>
+          <dl className="device-facts">
+            <div className="fact">
+              <dt className="caption">機型</dt>
+              <dd className="fact-value">{d.modelCode}</dd>
+            </div>
+            <div className="fact">
+              <dt className="caption">機櫃 / 槽位</dt>
+              <dd className="fact-value">
+                <Link className="link" to="/">
+                  {d.cabinetId}
+                </Link>
+                {' / '}
+                {d.slot}
+              </dd>
+            </div>
+            <div className="fact">
+              <dt className="caption">最後回報</dt>
+              <dd className="fact-value">{formatRelative(live?.ts ?? d.lastSeenAt)}</dd>
+            </div>
+          </dl>
         </header>
 
         <div className="metric-row">
@@ -111,11 +118,11 @@ export function DeviceDetail() {
                 <span className="metric-key">{m.key}</span>
                 <span className="metric-value">
                   {value === undefined ? '—' : formatNumber(value, 2)}
-                  <span className="metric-unit"> {m.unit}</span>
+                  {m.unit && <span className="metric-unit">{m.unit}</span>}
                 </span>
                 <span className="metric-range">
-                  量程 {m.minValue} ~ {m.maxValue}
-                  {outOfRange && <span className="warn"> 超出量程</span>}
+                  量程 {m.minValue} – {m.maxValue}
+                  {outOfRange && <span className="warn">・超出量程</span>}
                 </span>
               </button>
             );
@@ -164,10 +171,14 @@ export function DeviceDetail() {
               unit={activeDef?.unit ?? ''}
               height={300}
             />
-            <p className="sub">
-              指標 <span className="mono">{telemetry.data.metric}</span>｜
-              {telemetry.data.points.length} 個資料點｜層級{' '}
-              <span className="mono">{telemetry.data.resolution}</span>
+            <p className="chart-meta sub num">
+              <span>
+                指標 <span className="mono">{telemetry.data.metric}</span>
+              </span>
+              <span>{telemetry.data.points.length} 個資料點</span>
+              <span>
+                層級 <span className="mono">{telemetry.data.resolution}</span>
+              </span>
             </p>
           </>
         )}

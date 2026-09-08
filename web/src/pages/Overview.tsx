@@ -88,11 +88,14 @@ export function Overview() {
       <section className="stat-row">
         {STATUS_ORDER.map((status) => (
           <div key={status} className={`stat stat-${status}`}>
-            <span className="stat-label">{STATUS_LABEL[status]}裝置</span>
+            <span className="stat-label">
+              <span className={`dot dot-${status}`} aria-hidden="true" />
+              {STATUS_LABEL[status]}裝置
+            </span>
             <span className="stat-value">{counts ? formatInt(counts[status]) : '—'}</span>
           </div>
         ))}
-        <div className="stat stat-alarm">
+        <div className={`stat stat-alarm${(overview.data?.unresolvedAlarms ?? 0) > 0 ? ' is-hot' : ''}`}>
           <span className="stat-label">未解除告警</span>
           <span className="stat-value">
             {overview.data ? formatInt(overview.data.unresolvedAlarms) : '—'}
@@ -102,7 +105,7 @@ export function Overview() {
           <span className="stat-label">目前寫入速率</span>
           <span className="stat-value">
             {overview.data ? formatInt(overview.data.ingestRatePerSecond) : '—'}
-            <span className="stat-unit"> 點/秒</span>
+            <span className="stat-unit">點/秒</span>
           </span>
         </div>
       </section>
@@ -127,19 +130,21 @@ export function Overview() {
                 <option value="SERVER">伺服器櫃</option>
                 <option value="SENSOR">感測櫃</option>
               </select>
-              <span className="sub">
-                第 {safePage + 1}/{pageCount} 頁（共 {formatInt(filtered.length)} 櫃）
+              <span className="sub num">
+                第 {safePage + 1}/{pageCount} 頁・共 {formatInt(filtered.length)} 櫃
               </span>
-              <button className="btn" disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>
-                上一頁
-              </button>
-              <button
-                className="btn"
-                disabled={safePage >= pageCount - 1}
-                onClick={() => setPage(safePage + 1)}
-              >
-                下一頁
-              </button>
+              <span className="pager">
+                <button className="btn" disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>
+                  上一頁
+                </button>
+                <button
+                  className="btn"
+                  disabled={safePage >= pageCount - 1}
+                  onClick={() => setPage(safePage + 1)}
+                >
+                  下一頁
+                </button>
+              </span>
             </div>
           </header>
 
@@ -173,9 +178,9 @@ export function Overview() {
         <section className="panel">
           <header className="panel-head">
             <h2>即時告警</h2>
-            <span className="sub">
+            <span className="sub num">
               {connection === 'open' ? '推播中' : '等待連線'}
-              {overview.data && `｜更新於 ${formatTime(overview.data.generatedAt)}`}
+              {overview.data && `・更新於 ${formatTime(overview.data.generatedAt)}`}
             </span>
           </header>
           {firingAlarms.loading ? (
