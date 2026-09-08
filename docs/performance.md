@@ -123,6 +123,27 @@ MQTT broker 的連線數與消費端的批次組裝，而不是 TimescaleDB。
 `IllegalArgumentException` 轉譯成 `InvalidDataAccessApiUsageException`，
 控制器只接前者就漏掉了，使用者收到的是沒有原因的 500。
 
+
+---
+
+## 告警與推播：端到端打通
+
+> DEV-000002（TH-100，掛在監控樹 1→2→3→4 路徑的葉節點）。規則：temperature > 60 → CRITICAL。
+> 用 EMQX HTTP API 注入讀數，WebSocket 客戶端訂閱該裝置，每一步對照資料庫與 /tree。
+
+| 步驟 | WebSocket | 資料庫未解除 | /tree 根節點 |
+|---|---|---|---|
+| 基線 | — | node5 WARNING（兄弟分支） | WARNING×1 |
+| 注入 75°C | `alarm FIRING`，`ancestorIds=[1,2,3,4]`，3.1 秒後到達 | ＋node4 CRITICAL | CRITICAL×2 |
+| 送回 24°C | `alarm RESOLVED`，同一條祖先鏈 | node4 解除 | **WARNING×1** |
+
+最後一列是 ADR-0005「上浮從子樹重算」在真實路徑上的證明：解除葉節點的告警後，
+根節點退回兄弟分支的 WARNING，沒有變綠、也沒有卡在 CRITICAL。
+
+遙測推播 3 則對應 3 次發佈，經節流（每台每秒至多 1 則）；告警與狀態不節流，
+所以告警比同一批的遙測早 0.3 秒到達——那是刻意的。FIRING 先於 RESOLVED 到達，
+由 Kafka 以 deviceId 作分區鍵保證。
+
 ---
 
 ## 還沒量的
@@ -130,8 +151,8 @@ MQTT broker 的連線數與消費端的批次組裝，而不是 TimescaleDB。
 - **端到端在滿載下的吞吐**。目前只驗證了路徑打通（200 台裝置），
   一萬台裝置灌進整條路徑時消費端跟不跟得上還沒量。
 - 一萬台裝置同時連線時 EMQX 的記憶體與 CPU
-- 告警引擎在每秒五萬點下的比對延遲（引擎本身已完成，尚未接上消費端）
-- WebSocket 推播在數百個瀏覽器連線下的表現（尚未實作）
+- 告警引擎在每秒五萬點下的比對延遲（已接上消費端，尚未壓測）
+- WebSocket 推播在數百個瀏覽器連線下的表現（已實作，尚未壓測）
 - 聚合層每列的實際大小（目前是推估值）
 - 兩年份資料的真實查詢延遲。目前的 2.1ms 是在 100 萬筆上量的，
   8.76 億筆的小時層還沒有實測。

@@ -76,6 +76,19 @@ public class MonitoringTreeRepository {
                 """.formatted(NODE_COLUMNS), NODE_MAPPER, nodeId);
     }
 
+    /**
+     * 裝置在樹上的祖先鏈 id，由上到下，含裝置節點本身；裝置不在樹上時為空清單。
+     * 推播端每則告警呼叫一次，用來告訴前端「整條路徑上的哪些節點該重抓 rollup」。
+     */
+    public List<Long> findAncestorIdsOfDevice(int deviceRowId) {
+        return jdbc.query("""
+                SELECT a.id FROM monitoring_node a
+                JOIN monitoring_node leaf ON leaf.device_id = ?
+                WHERE a.path @> leaf.path
+                ORDER BY nlevel(a.path)
+                """, (rs, i) -> rs.getLong("id"), deviceRowId);
+    }
+
     public Optional<TreeNode> findById(long nodeId) {
         try {
             return Optional.ofNullable(jdbc.queryForObject(
