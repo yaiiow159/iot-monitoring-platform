@@ -84,7 +84,7 @@ public class AlarmEngineConsumer {
         if (model.isEmpty()) {
             return; // 未註冊的裝置，寫入端同樣會丟棄
         }
-        List<AlarmRule> applicable = rules.enabledRulesFor(model.get());
+        List<AlarmRule> applicable = rules.enabledRulesFor(deviceId, model.get());
         if (applicable.isEmpty()) {
             return;
         }
@@ -128,6 +128,28 @@ public class AlarmEngineConsumer {
     private void publish(AlarmEvent event) {
         // 分區鍵用 deviceId：同一台裝置的 FIRING → RESOLVED 順序才有保證
         kafka.send(TOPIC_ALARM, event.deviceId(), event);
+    }
+
+    /**
+     * 裝置規則接管某個指標：解除該裝置上同指標機型規則的告警並推播，
+     * 再清掉它的累積狀態，讓新規則從零開始計算持續時間。
+     *
+     * @return 被解除的告警數
+     */
+    public int supersede(DeviceId deviceId, MetricKey metric) {
+        Integer deviceRowId = deviceIds.numericIdOf(deviceId);
+        if (deviceRowId == null) {
+            return 0;
+        }
+        Instant now = Instant.now();
+        List<AlarmRepository.Superseded> superseded = alarms.resolveModelRuleAlarms(deviceRowId, metric.value(), now);
+        for (AlarmRepository.Superseded s : superseded) {
+            resolved.increment();
+            publish(new AlarmEvent(s.alarmId(), deviceId.value(), s.ruleId(), s.severity(), "RESOLVED", null,
+                    now.toEpochMilli()));
+        }
+        evaluator.forget(deviceId);
+        return superseded.size();
     }
 
     /** 裝置離線時清掉它的累積狀態（見 AlarmEvaluator.forget 的說明） */

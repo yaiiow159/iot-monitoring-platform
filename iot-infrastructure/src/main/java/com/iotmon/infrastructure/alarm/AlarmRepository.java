@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -39,6 +40,25 @@ public class AlarmRepository {
                 """,
                 rs -> rs.next() ? Optional.of(rs.getLong("id")) : Optional.<Long>empty(),
                 deviceRowId, ruleId, severity.name(), triggerValue, Timestamp.from(at), nodeId);
+    }
+
+    /**
+     * 裝置規則接管某個指標時，把該裝置上「機型規則」在同指標的未解除告警一併解除。
+     * 不做這件事，那些告警會永遠掛著：規則已不再被評估，沒有人會去解除它。
+     */
+    public List<Superseded> resolveModelRuleAlarms(int deviceRowId, String metricKey, Instant at) {
+        return jdbc.query("""
+                UPDATE alarm a SET state = 'RESOLVED', resolved_at = ?
+                FROM alarm_rule r
+                WHERE r.id = a.rule_id AND a.device_id = ? AND a.state = 'FIRING'
+                  AND r.model_code IS NOT NULL AND r.metric_key = ?
+                RETURNING a.id, a.rule_id, a.severity
+                """,
+                (rs, i) -> new Superseded(rs.getLong("id"), rs.getLong("rule_id"), rs.getString("severity")),
+                Timestamp.from(at), deviceRowId, metricKey);
+    }
+
+    public record Superseded(long alarmId, long ruleId, String severity) {
     }
 
     /** @return 被解除的告警 id；沒有未解除的同款告警時為 empty */

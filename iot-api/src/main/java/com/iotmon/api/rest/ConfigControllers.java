@@ -5,12 +5,15 @@ import com.iotmon.domain.alarm.AlarmSeverity;
 import com.iotmon.domain.alarm.Comparison;
 import com.iotmon.domain.cabinet.Cabinet;
 import com.iotmon.domain.cabinet.CabinetType;
+import com.iotmon.domain.device.DeviceId;
 import com.iotmon.domain.model.DeviceModel;
 import com.iotmon.domain.model.MetricDefinition;
 import com.iotmon.domain.model.MetricKey;
 import com.iotmon.domain.model.ModelCode;
+import com.iotmon.infrastructure.alarm.AlarmEngineConsumer;
 import com.iotmon.infrastructure.alarm.AlarmRuleRepository;
 import com.iotmon.infrastructure.persistence.CatalogRepository;
+import com.iotmon.infrastructure.persistence.DeviceRepository;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -157,60 +160,93 @@ public final class ConfigControllers {
 
         private final AlarmRuleRepository rules;
         private final CatalogRepository catalog;
+        private final DeviceRepository devices;
+        private final AlarmEngineConsumer engine;
 
-        public AlarmRuleController(AlarmRuleRepository rules, CatalogRepository catalog) {
+        public AlarmRuleController(AlarmRuleRepository rules, CatalogRepository catalog, DeviceRepository devices,
+                                   AlarmEngineConsumer engine) {
             this.rules = rules;
             this.catalog = catalog;
+            this.devices = devices;
+            this.engine = engine;
         }
 
         @GetMapping
         public List<RuleResponse> list() {
-            return rules.findAllModelRules().stream().map(RuleResponse::from).toList();
+            return rules.findAll().stream().map(RuleResponse::from).toList();
         }
 
         /**
          * 建立前檢查門檻是否落在該指標的量程內。
          * 門檻設在量程外的規則永遠不會觸發、也不會報錯——它會安靜地存在直到事故發生。
+         *
+         * <p>帶 deviceId 就是裝置例外規則：指標的量程來自該裝置的機型，
+         * 優先序（同指標整個取代機型規則）在 AlarmRulePrecedence。
          */
         @PostMapping
         public ResponseEntity<?> create(@RequestBody RuleRequest request) {
             try {
-                ModelCode modelCode = ModelCode.of(request.modelCode());
+                boolean deviceScoped = request.deviceId() != null && !request.deviceId().isBlank();
+                boolean modelScoped = request.modelCode() != null && !request.modelCode().isBlank();
+                if (deviceScoped == modelScoped) {
+                    throw new IllegalArgumentException("規則必須綁定機型或裝置，且只能擇一");
+                }
+
+                DeviceId deviceId = null;
+                ModelCode modelCode;
+                if (deviceScoped) {
+                    deviceId = DeviceId.of(request.deviceId());
+                    DeviceRepository.Row device = devices.find(deviceId)
+                            .orElseThrow(() -> new IllegalArgumentException("裝置不存在：" + request.deviceId()));
+                    modelCode = ModelCode.of(device.modelCode());
+                } else {
+                    modelCode = ModelCode.of(request.modelCode());
+                }
                 DeviceModel model = catalog.findModel(modelCode)
-                        .orElseThrow(() -> new IllegalArgumentException("機型不存在：" + request.modelCode()));
+                        .orElseThrow(() -> new IllegalArgumentException("機型不存在：" + modelCode));
                 MetricKey metric = MetricKey.of(request.metric());
                 MetricDefinition definition = model.metric(metric)
                         .orElseThrow(() -> new IllegalArgumentException(
                                 "機型 " + modelCode + " 沒有指標 " + metric));
 
-                AlarmRule rule = AlarmRule.forModel(null, request.name(), modelCode, metric,
-                        parseEnum(Comparison.class, request.comparison(), "比較方式"),
-                        request.threshold(), request.secondaryValue(),
-                        parseEnum(AlarmSeverity.class, request.severity(), "嚴重度"),
-                        Duration.ofSeconds(request.durationSeconds()), request.enabled());
+                Comparison comparison = parseEnum(Comparison.class, request.comparison(), "比較方式");
+                AlarmSeverity severity = parseEnum(AlarmSeverity.class, request.severity(), "嚴重度");
+                Duration sustained = Duration.ofSeconds(request.durationSeconds());
+                AlarmRule rule = deviceScoped
+                        ? AlarmRule.forDevice(null, request.name(), deviceId, metric, comparison,
+                        request.threshold(), request.secondaryValue(), severity, sustained, request.enabled())
+                        : AlarmRule.forModel(null, request.name(), modelCode, metric, comparison,
+                        request.threshold(), request.secondaryValue(), severity, sustained, request.enabled());
 
                 if (!rule.isMeaningfulFor(definition)) {
                     throw new IllegalArgumentException("門檻 " + request.threshold() + " 超出指標 " + metric
                             + " 的量程 [" + definition.minValue() + ", " + definition.maxValue()
                             + "]，這條規則永遠不會觸發");
                 }
-                return ResponseEntity.status(HttpStatus.CREATED).body(RuleResponse.from(rules.insert(rule)));
+                AlarmRule saved = rules.insert(rule);
+                if (deviceScoped) {
+                    // 被取代的機型規則若正在響，由引擎解除並推播，否則那則告警會永遠掛著
+                    engine.supersede(deviceId, metric);
+                }
+                return ResponseEntity.status(HttpStatus.CREATED).body(RuleResponse.from(saved));
             } catch (IllegalArgumentException | DuplicateKeyException e) {
                 return badRequest(e);
             }
         }
 
-        public record RuleRequest(String name, String modelCode, String metric, String comparison,
+        public record RuleRequest(String name, String modelCode, String deviceId, String metric, String comparison,
                                   double threshold, Double secondaryValue, int durationSeconds,
                                   String severity, boolean enabled) {
         }
     }
 
-    public record RuleResponse(long id, String name, String modelCode, String metric, String comparison,
-                               double threshold, Double secondaryValue, int durationSeconds,
+    /** modelCode 與 deviceId 恰有一個非 null，前端據此分辨機型規則與裝置例外 */
+    public record RuleResponse(long id, String name, String modelCode, String deviceId, String metric,
+                               String comparison, double threshold, Double secondaryValue, int durationSeconds,
                                String severity, boolean enabled) {
         static RuleResponse from(AlarmRule r) {
             return new RuleResponse(r.id(), r.name(), r.modelCode().map(ModelCode::value).orElse(null),
+                    r.deviceId().map(DeviceId::value).orElse(null),
                     r.metric().value(), r.comparison().name(), r.threshold(),
                     r.secondaryValue().orElse(null), (int) r.sustainedFor().toSeconds(),
                     r.severity().name(), r.enabled());

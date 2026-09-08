@@ -224,7 +224,7 @@ WebSocket 的 `alarm` 推播會多帶 `ancestorIds`（由上到下），
 | `POST /devices` | ✅ 走 `Cabinet.rejectReasonFor` 與 `Device.register`；成功後讓 `DeviceIdResolver` 的負向快取失效，裝置立刻可收遙測 |
 | `GET/POST /models` | ✅ 機型與指標同一交易寫入；`DeviceModel.of` 擋空指標、重複指標 |
 | `GET/POST /cabinets` | ✅ `id` 就是機櫃 `code`（前端拿它當顯示名稱與 `Device.cabinetId` 的關聯鍵）；資料表的數值 id 不外露 |
-| `GET/POST /alarm-rules` | ✅ 建立前以 `AlarmRule.isMeaningfulFor` 擋掉門檻落在量程外、永遠不會觸發的規則；寫入後規則快取立即失效 |
+| `GET/POST /alarm-rules` | ✅ 綁機型（`modelCode`）或綁裝置（`deviceId`）擇一；裝置規則以指標為單位取代機型規則（ADR-0006），建立時一併解除被取代的告警。建立前以 `AlarmRule.isMeaningfulFor` 擋掉門檻落在量程外的規則 |
 | `GET /alarms?state&deviceId&limit` | ✅ 一次 join 裝置與規則；FIRING 排前、再依觸發時間新到舊；`limit` 上限 500 |
 
 ### 回應形狀上的取捨
