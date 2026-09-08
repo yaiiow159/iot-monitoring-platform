@@ -138,13 +138,14 @@ export const httpApi: IotApi = {
       `/devices${qs({ status: query.status, cabinetId: query.cabinetId, modelCode: query.modelCode })}`,
     ),
 
-  /**
-   * 契約沒有 /devices/{id}，所以先用清單再過濾。
-   * 一萬台裝置這樣做並不划算，後端補上單筆端點後這裡要跟著改。
-   */
+  /** 單筆端點：404 視為不存在，其他錯誤照常拋出 */
   async getDevice(deviceId: string) {
-    const all = await httpApi.listDevices();
-    return all.find((d) => d.deviceId === deviceId) ?? null;
+    try {
+      return await request<Device>(`/devices/${encodeURIComponent(deviceId)}`);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return null;
+      throw e;
+    }
   },
 
   listAlarms: (params = {}) =>

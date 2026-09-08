@@ -69,7 +69,7 @@ public final class SimulatedModels {
     private static SimulatedModel threePhasePowerModule() {
         MetricDefinition voltage = MetricDefinition.of("voltage", "V", 0, 500);
         MetricDefinition current = MetricDefinition.of("current", "A", 0, 200);
-        MetricDefinition powerFactor = MetricDefinition.of("power_factor", "無單位", 0, 1);
+        MetricDefinition powerFactor = MetricDefinition.of("power_factor", "", 0, 1);
         DeviceModel model = DeviceModel.of(
                 ModelCode.of("PWR-3P"), "IotMon", "三相電力模組",
                 List.of(voltage, current, powerFactor));
@@ -85,7 +85,7 @@ public final class SimulatedModels {
         MetricDefinition humidity = MetricDefinition.of("humidity", "%", 0, 100);
         MetricDefinition voltage = MetricDefinition.of("voltage", "V", 0, 500);
         MetricDefinition current = MetricDefinition.of("current", "A", 0, 200);
-        MetricDefinition powerFactor = MetricDefinition.of("power_factor", "無單位", 0, 1);
+        MetricDefinition powerFactor = MetricDefinition.of("power_factor", "", 0, 1);
         MetricDefinition doorOpen = MetricDefinition.of("door_open", "無單位", 0, 1);
         MetricDefinition fanRpm = MetricDefinition.of("fan_rpm", "RPM", 0, 6000);
         DeviceModel model = DeviceModel.of(

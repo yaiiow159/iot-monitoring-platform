@@ -24,8 +24,6 @@ public record TelemetryPoint(DeviceId deviceId, MetricKey metric, double value, 
         Guard.notNull(deviceId, "遙測的裝置識別碼");
         Guard.notNull(metric, "遙測的指標代號");
         Guard.notNull(timestamp, "遙測的時間戳");
-        // NaN 與無限大會一路汙染聚合結果：avg 會變成 NaN，而且 SQL 端不會報錯。
-        // 在入口擋掉，比事後從連續聚合裡把它挖出來容易得多。
         Guard.finite(value, "遙測讀數 " + deviceId + "/" + metric);
     }
 }

@@ -32,8 +32,6 @@ public class MonitoringTreeRepository {
 
     private static final RowMapper<TreeNode> NODE_MAPPER = (rs, i) -> {
         String deviceCode = rs.getString("device_code");
-        // 不用 getObject(col, Long.class)：Postgres 驅動拒絕把 int4 轉成 java.lang.Long，
-        // 而 parent_id 是 SERIAL 外鍵、正是 int4。getLong + wasNull 是 JDBC 處理可空整數的慣用法。
         long parentRaw = rs.getLong("parent_id");
         Long parentId = rs.wasNull() ? null : parentRaw;
         return new TreeNode(

@@ -18,7 +18,7 @@ public record MetricDefinition(MetricKey key, String unit, double minValue, doub
 
     public MetricDefinition {
         Guard.notNull(key, "指標代號");
-        Guard.notBlank(unit, "指標 " + key + " 的單位");
+        Guard.notNull(unit, "指標 " + key + " 的單位");
         Guard.finite(minValue, "指標 " + key + " 的量程下限");
         Guard.finite(maxValue, "指標 " + key + " 的量程上限");
         if (minValue >= maxValue) {

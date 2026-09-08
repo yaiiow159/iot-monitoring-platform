@@ -39,6 +39,45 @@ public class AlarmRuleRepository {
         return current().byModel().getOrDefault(model, List.of());
     }
 
+    /** 設定畫面用：含停用的，依 id 排序。 */
+    public List<AlarmRule> findAllModelRules() {
+        List<AlarmRule> all = new java.util.ArrayList<>();
+        jdbc.query("""
+                SELECT id, name, model_code, metric_key, comparison, threshold, secondary_value,
+                       severity, duration_seconds, enabled
+                FROM alarm_rule WHERE model_code IS NOT NULL ORDER BY id
+                """, (java.sql.ResultSet rs) -> {
+            all.add(mapRule(rs));
+        });
+        return all;
+    }
+
+    /** 寫入後讓快取立刻失效，改完門檻不必等 30 秒。 */
+    public AlarmRule insert(AlarmRule rule) {
+        Long id = jdbc.queryForObject("""
+                INSERT INTO alarm_rule (name, model_code, metric_key, comparison, threshold, secondary_value,
+                                        severity, duration_seconds, enabled)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+                """, Long.class,
+                rule.name(), rule.modelCode().map(ModelCode::value).orElse(null), rule.metric().value(),
+                rule.comparison().name(), rule.threshold(), rule.secondaryValue().orElse(null),
+                rule.severity().name(), (int) rule.sustainedFor().toSeconds(), rule.enabled());
+        snapshot.set(null);
+        return AlarmRule.forModel(id, rule.name(), rule.modelCode().orElseThrow(), rule.metric(),
+                rule.comparison(), rule.threshold(), rule.secondaryValue().orElse(null),
+                rule.severity(), rule.sustainedFor(), rule.enabled());
+    }
+
+    private static AlarmRule mapRule(java.sql.ResultSet rs) throws java.sql.SQLException {
+        double secondaryRaw = rs.getDouble("secondary_value");
+        Double secondary = rs.wasNull() ? null : secondaryRaw;
+        return AlarmRule.forModel(
+                rs.getLong("id"), rs.getString("name"), ModelCode.of(rs.getString("model_code")),
+                MetricKey.of(rs.getString("metric_key")), Comparison.valueOf(rs.getString("comparison")),
+                rs.getDouble("threshold"), secondary, AlarmSeverity.valueOf(rs.getString("severity")),
+                Duration.ofSeconds(rs.getInt("duration_seconds")), rs.getBoolean("enabled"));
+    }
+
     private Snapshot current() {
         Snapshot s = snapshot.get();
         if (s != null && System.nanoTime() - s.loadedAtNanos() < TTL.toNanos()) {

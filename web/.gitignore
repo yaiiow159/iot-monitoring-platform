@@ -2,3 +2,6 @@ node_modules
 dist
 *.tsbuildinfo
 .env.local
+
+# vite 執行中產生的暫存
+*.timestamp-*.mjs

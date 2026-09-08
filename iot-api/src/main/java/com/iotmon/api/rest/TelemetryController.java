@@ -49,9 +49,6 @@ public class TelemetryController {
                     series.points().stream().map(PointResponse::from).toList()));
 
         } catch (IllegalArgumentException | InvalidDataAccessApiUsageException badRequest) {
-            // 兩種型別都要接：Spring 會把 @Repository 拋出的 IllegalArgumentException
-            // 轉譯成 InvalidDataAccessApiUsageException，只接前者的話這裡會漏掉，
-            // 使用者收到的是 500 而不是帶有原因的 400。
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse(rootMessage(badRequest)));
         }

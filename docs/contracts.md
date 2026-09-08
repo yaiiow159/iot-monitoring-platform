@@ -211,17 +211,26 @@ WebSocket 的 `alarm` 推播會多帶 `ancestorIds`（由上到下），
 
 ## 實作狀態（2026-09-09）
 
-契約先於實作寫定，所以這張表說明「現在哪些端點真的在」。前端在 mock 模式下涵蓋全部契約；
-切到真實 API 時，未實作的端點會讓對應畫面顯示載入失敗，這是預期行為，不是 bug。
+契約先於實作寫定，這張表說明「現在哪些端點真的在」。全部端點已實作並以 curl 逐一驗證，
+前端在 `VITE_USE_MOCK=false` 下可以完整跑起來。
 
 | 端點 | 狀態 |
 |---|---|
 | `GET /telemetry` | ✅ 三層路由、resolution 欄位、400 拒絕過大範圍 |
 | `GET /tree`、`/tree/{id}`、`/tree/{id}/ancestors`、`POST /tree/nodes`、`PATCH …/order` | ✅ |
 | WebSocket `/ws/live`（telemetry 節流、status、alarm 帶 ancestorIds） | ✅ |
-| `GET /overview` | ❌ 總覽頁在真實模式下為空 |
-| `GET /devices`、`GET /devices/{id}` | ❌ |
-| `GET /models`、`GET /cabinets`、`GET /alarm-rules` 及其 POST | ❌ 設定資料目前只能直接寫資料庫 |
-| `GET /alarms` | ❌ 告警列表；告警本身已由引擎產生並推播 |
+| `GET /overview` | ✅ 四種狀態都有 key；`ingestRatePerSecond` 取過去 10 秒原始表計數 ÷ 10 |
+| `GET /devices?status&cabinetId&modelCode`、`GET /devices/{id}` | ✅ 清單上限 1000 筆，排序＝機櫃→槽位→代號；單筆不存在回 404 |
+| `POST /devices` | ✅ 走 `Cabinet.rejectReasonFor` 與 `Device.register`；成功後讓 `DeviceIdResolver` 的負向快取失效，裝置立刻可收遙測 |
+| `GET/POST /models` | ✅ 機型與指標同一交易寫入；`DeviceModel.of` 擋空指標、重複指標 |
+| `GET/POST /cabinets` | ✅ `id` 就是機櫃 `code`（前端拿它當顯示名稱與 `Device.cabinetId` 的關聯鍵）；資料表的數值 id 不外露 |
+| `GET/POST /alarm-rules` | ✅ 建立前以 `AlarmRule.isMeaningfulFor` 擋掉門檻落在量程外、永遠不會觸發的規則；寫入後規則快取立即失效 |
+| `GET /alarms?state&deviceId&limit` | ✅ 一次 join 裝置與規則；FIRING 排前、再依觸發時間新到舊；`limit` 上限 500 |
 
-未實作的部分全是「讀設定表回 JSON」這一類，沒有設計上的難點，是工作量問題。
+### 回應形狀上的取捨
+
+- `Device.name`／`Alarm.deviceName` 用 `serial_no`：資料表沒有獨立顯示名稱欄位，加欄位前先不要憑空造一個。
+- `Alarm.message` 用規則名稱：值班的人要看的是「哪條規則響了」。
+- 錯誤一律 `{"message": "..."}`；領域不變條件回 400 帶原文，唯一鍵衝突回 409，列舉值不合法會列出可用值而不是漏出 Java 類別名。
+- `MetricDefinition.unit` 允許空字串：功率因數、門磁這類無因次量本來就沒有單位（原本的 `notBlank` 讓 `GET /models` 直接 500）。
+- 註冊後裝置的 `status` 仍是 `UNKNOWN`：上下線由 MQTT 連線／LWT 事件驅動（ADR-0004），單純送遙測不會改狀態。
