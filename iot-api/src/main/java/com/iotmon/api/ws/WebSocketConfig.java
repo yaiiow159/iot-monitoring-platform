@@ -1,5 +1,6 @@
 package com.iotmon.api.ws;
 
+import com.iotmon.api.security.WsTokenHandshakeInterceptor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
@@ -17,13 +18,16 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final LiveWebSocketHandler handler;
+    private final WsTokenHandshakeInterceptor auth;
 
-    public WebSocketConfig(LiveWebSocketHandler handler) {
+    public WebSocketConfig(LiveWebSocketHandler handler, WsTokenHandshakeInterceptor auth) {
         this.handler = handler;
+        this.auth = auth;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(handler, "/ws/live").setAllowedOriginPatterns("*");
+        // 握手驗 token：REST 鎖了、推播不鎖，等於遙測可以匿名看
+        registry.addHandler(handler, "/ws/live").addInterceptors(auth).setAllowedOriginPatterns("*");
     }
 }

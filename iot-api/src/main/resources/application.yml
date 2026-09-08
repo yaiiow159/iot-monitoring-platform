@@ -59,6 +59,15 @@ management:
       application: iot-monitoring
 
 iot:
+  auth:
+    # HS256 金鑰，至少 32 字元。這是開發用的值，正式環境用環境變數 IOT_AUTH_SECRET 覆蓋
+    secret: ${IOT_AUTH_SECRET:iot-monitoring-dev-secret-change-me-before-deploy}
+    token-ttl-hours: 12
+    # 第一次啟動時建立的示範帳號；表裡已有人就不會再建
+    bootstrap:
+      admin-password: ${IOT_ADMIN_PASSWORD:admin1234}
+      operator-password: ${IOT_OPERATOR_PASSWORD:operator1234}
+      viewer-password: ${IOT_VIEWER_PASSWORD:viewer1234}
   mqtt:
     host: localhost
     port: 1883
