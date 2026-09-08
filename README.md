@@ -162,7 +162,7 @@ java -jar iot-api/target/iot-monitoring.jar
 java -jar iot-simulator/target/iot-simulator.jar --simulator.device-count=1000
 ```
 
-前端儀表板 http://localhost:3000，API 文件 http://localhost:8080/swagger-ui.html。
+前端儀表板 http://localhost:3000，API 文件 http://localhost:8090/swagger-ui.html。
 
 ---
 

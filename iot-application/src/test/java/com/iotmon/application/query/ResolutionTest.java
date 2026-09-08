@@ -15,47 +15,65 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ResolutionTest {
 
+    private static final int MAX_POINTS = 5000;
+
     @Test
-    @DisplayName("六小時以內讀原始層")
+    @DisplayName("一小時查詢走原始層：3,600 點，畫得下")
     void shortSpanUsesRaw() {
-        assertEquals(Resolution.RAW, Resolution.forSpan(Duration.ofHours(1)));
-        assertEquals(Resolution.RAW, Resolution.forSpan(Duration.ofHours(6)));
+        assertEquals(Resolution.RAW, Resolution.forSpan(Duration.ofHours(1), MAX_POINTS));
     }
 
     @Test
-    @DisplayName("超過六小時到三十天讀 1 分鐘層")
-    void mediumSpanUsesMinuteAggregate() {
-        assertEquals(Resolution.ONE_MINUTE, Resolution.forSpan(Duration.ofHours(7)));
-        assertEquals(Resolution.ONE_MINUTE, Resolution.forSpan(Duration.ofDays(30)));
+    @DisplayName("六小時的原始資料是 21,600 點，超過上限，自動退到 1 分鐘層")
+    void rawFallsBackWhenTooManyPoints() {
+        // 這是早期版本的缺陷：原始層一律回報「無限多點」，導致所有原始查詢都被拒絕，
+        // 六小時以內的路徑等於完全不能用
+        assertEquals(21_600, Resolution.RAW.estimatedPoints(Duration.ofHours(6)));
+        assertEquals(Resolution.ONE_MINUTE, Resolution.forSpan(Duration.ofHours(6), MAX_POINTS));
     }
 
     @Test
-    @DisplayName("超過三十天讀 1 小時層，兩年也一樣")
-    void longSpanUsesHourAggregate() {
-        assertEquals(Resolution.ONE_HOUR, Resolution.forSpan(Duration.ofDays(31)));
-        assertEquals(Resolution.ONE_HOUR, Resolution.forSpan(Duration.ofDays(730)));
-        assertEquals(Resolution.ONE_HOUR, Resolution.forSpan(Duration.ofDays(1825)));
+    @DisplayName("點數超標時往粗的層級退，而不是回錯誤——使用者要的是資料不是錯誤訊息")
+    void escalatesInsteadOfRejecting() {
+        assertEquals(Resolution.ONE_MINUTE, Resolution.forSpan(Duration.ofDays(3), MAX_POINTS));
+        // 30 天以 1 分鐘計是 43,200 點，超過上限，退到小時層
+        assertEquals(Resolution.ONE_HOUR, Resolution.forSpan(Duration.ofDays(30), MAX_POINTS));
     }
 
     @Test
-    @DisplayName("兩年跨度只有 17,520 個桶——這就是它能進一秒的原因")
-    void twoYearQueryIsSmall() {
-        long buckets = Resolution.ONE_HOUR.estimatedBuckets(Duration.ofDays(730));
-        assertEquals(17_520, buckets);
-        assertTrue(buckets < 20_000, "兩年的小時桶數應遠小於任何會超時的量級");
+    @DisplayName("兩年跨度走小時層，17,520 點——這就是它能進一秒的原因")
+    void twoYearQueryUsesHourly() {
+        assertEquals(17_520, Resolution.ONE_HOUR.estimatedPoints(Duration.ofDays(730)));
+        // 但 17,520 > 5000，所以兩年的單次查詢仍需縮小範圍或提高上限
+        assertThrows(IllegalArgumentException.class,
+                () -> Resolution.forSpan(Duration.ofDays(730), MAX_POINTS));
+        // 放寬上限後就走小時層
+        assertEquals(Resolution.ONE_HOUR, Resolution.forSpan(Duration.ofDays(730), 20_000));
     }
 
     @Test
-    @DisplayName("原始層回報桶數上限，讓呼叫端一律當成「很多」處理")
-    void rawReportsUnboundedBuckets() {
-        assertEquals(Long.MAX_VALUE, Resolution.RAW.estimatedBuckets(Duration.ofHours(1)));
+    @DisplayName("一年跨度在預設上限內：8,760 點仍超標，2000 點上限下要更粗的層級")
+    void oneYearNeedsHourly() {
+        assertEquals(8_760, Resolution.ONE_HOUR.estimatedPoints(Duration.ofDays(365)));
+        assertEquals(Resolution.ONE_HOUR, Resolution.forSpan(Duration.ofDays(365), 10_000));
     }
 
     @Test
-    @DisplayName("跨度為負或 null 直接拒絕，不要讓它變成一個掃全表的查詢")
+    @DisplayName("連小時層都超標時才拒絕，並說明實際點數")
+    void rejectsOnlyWhenEvenHourlyIsTooMuch() {
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> Resolution.forSpan(Duration.ofDays(3650), MAX_POINTS));
+        assertTrue(error.getMessage().contains("小時聚合"), "訊息應說明已經用最粗的層級");
+    }
+
+    @Test
+    @DisplayName("跨度為零、負數或 null 直接拒絕，不要讓它變成掃全表的查詢")
     void rejectsInvalidSpan() {
-        assertThrows(IllegalArgumentException.class, () -> Resolution.forSpan(null));
-        assertThrows(IllegalArgumentException.class, () -> Resolution.forSpan(Duration.ofDays(-1)));
+        assertThrows(IllegalArgumentException.class, () -> Resolution.forSpan(null, MAX_POINTS));
+        assertThrows(IllegalArgumentException.class,
+                () -> Resolution.forSpan(Duration.ofDays(-1), MAX_POINTS));
+        assertThrows(IllegalArgumentException.class,
+                () -> Resolution.forSpan(Duration.ZERO, MAX_POINTS));
     }
 
     @Test

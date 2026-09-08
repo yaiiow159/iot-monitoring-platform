@@ -70,7 +70,7 @@ LWT 在連線時註冊，`state` 為 `OFFLINE`。裝置正常斷線時會自己�
 
 ## REST API
 
-Base：`http://localhost:8080/api/v1`
+Base：`http://localhost:8090/api/v1`
 
 ### 設定中心
 
@@ -124,7 +124,7 @@ GET /telemetry?deviceId=DEV-000123&metric=temperature&from=...&to=...&maxPoints=
 
 ## WebSocket
 
-端點：`ws://localhost:8080/ws/live`
+端點：`ws://localhost:8090/ws/live`
 
 連線後送一則訂閱訊息，指定要收哪些裝置的更新。
 不訂閱就什麼都不推——一萬台裝置的更新全推給每個瀏覽器會直接打爆前端。

@@ -34,6 +34,15 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!--
+            actuator starter 本身不含 web 容器，少了它 /actuator/prometheus 就只存在於記憶體裡，
+            Prometheus 抓不到（deploy/prometheus.yml 已設定抓 8081）。
+            模擬器不提供任何 REST API，這個容器純粹是指標的出口。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.hivemq</groupId>
             <artifactId>hivemq-mqtt-client</artifactId>

@@ -19,7 +19,7 @@ import java.util.List;
 @Repository
 public class TimescaleTelemetryQuery {
 
-    /** 單次查詢允許回傳的最大點數。超過就拒絕，不截斷。 */
+    /** 單次查詢允許回傳的最大點數。超標時先往粗的層級退，退到底才拒絕。 */
     public static final int MAX_POINTS = 5000;
 
     private final JdbcTemplate jdbc;
@@ -43,16 +43,10 @@ public class TimescaleTelemetryQuery {
             throw new IllegalArgumentException("裝置未註冊：" + deviceId);
         }
 
+        // 層級由跨度與點數上限共同決定：點數超標時往粗的層級退，
+        // 只有連小時層都放不下時才拒絕（forSpan 會拋例外）
         Duration span = Duration.between(from, to);
-        Resolution resolution = Resolution.forSpan(span);
-
-        long buckets = resolution.estimatedBuckets(span);
-        if (buckets > MAX_POINTS) {
-            // 安靜截斷比沒有圖表更危險——使用者會以為自己看到了完整的資料
-            throw new IllegalArgumentException(
-                    "此區間會產生約 " + buckets + " 個資料點，超過上限 " + MAX_POINTS
-                            + "。請縮小時間範圍。");
-        }
+        Resolution resolution = Resolution.forSpan(span, MAX_POINTS);
 
         short metricId = metrics.idOf(metric);
         List<Point> points = resolution == Resolution.RAW

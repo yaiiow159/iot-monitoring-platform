@@ -45,8 +45,9 @@ spring:
       type: batch
       ack-mode: manual_immediate
 
+# 8080 常被其他本機服務佔用（作者機器上是另一個專案），改用 8090
 server:
-  port: 8080
+  port: 8090
 
 management:
   endpoints:

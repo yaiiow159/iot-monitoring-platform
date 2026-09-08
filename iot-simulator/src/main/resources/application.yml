@@ -1,0 +1,61 @@
+spring:
+  application:
+    name: iot-simulator
+  main:
+    # 模擬器沒有 REST API，內嵌的 web 容器只為了讓 Prometheus 抓得到指標
+    web-application-type: servlet
+
+server:
+  # 8080 給 iot-api，模擬器的 actuator 開在 8081（deploy/prometheus.yml 依此設定抓取）
+  port: 8081
+  tomcat:
+    threads:
+      # 只服務抓取請求。執行緒留給發佈路徑，不要被閒置的 HTTP 執行緒佔走
+      max: 8
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: iot-simulator
+
+logging:
+  level:
+    com.iotmon.simulator: INFO
+    # HiveMQ 在一萬條連線下的 DEBUG 訊息量本身就會影響量測結果
+    com.hivemq.client: WARN
+
+simulator:
+  device-count: 1000
+  # 一萬台 × 每秒一則 = 每秒一萬則。要壓到每秒五萬則就把這裡降到 200
+  publish-interval-ms: 1000
+  device-id-prefix: DEV-
+  publisher-threads: 0
+  seed: 20260909
+
+  mqtt:
+    host: localhost
+    port: 1883
+    client-id-prefix: sim
+    # 1 = 一台裝置一條連線、一則自己的遺言。調大是拿斷線偵測的解析度換吞吐，
+    # 理由見 MqttConnectionPool 的類別註解
+    devices-per-connection: 1
+    netty-threads: 0
+    connect-concurrency: 200
+    keep-alive-seconds: 60
+
+  fault:
+    # 預設全部為 0：壓測基準線不該混進故障流量，要驗證告警時再逐項打開
+    offline-flapping-ratio: 0
+    out-of-range-ratio: 0
+    clock-drift-ratio: 0
+    silent-ratio: 0
+    spike-ratio: 0
+    clock-drift-seconds: 45
+    flap-up-ms: 30000
+    flap-down-ms: 15000
+    silence-after-ms: 60000
+    spike-probability: 0.02

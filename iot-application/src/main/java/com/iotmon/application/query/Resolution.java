@@ -35,37 +35,49 @@ public enum Resolution {
     }
 
     /**
-     * 依請求跨度挑選層級。
-     *
-     * <p>門檻刻意設得比保留期限保守：原始層保留 7 天，但只有 6 小時內的查詢走它。
-     * 理由是查詢成本——七天的原始資料是 302 億筆的七分之一，
-     * 就算查得到也不可能在一秒內回應。保留期限決定「資料還在不在」，
-     * 這裡的門檻決定「讀它划不划算」，兩者不是同一件事。
+     * 平台設計的取樣頻率：每台裝置每個指標每秒一點。
+     * 原始層沒有固定的桶大小，用這個值估算點數。
      */
-    public static Resolution forSpan(Duration span) {
-        if (span == null || span.isNegative()) {
+    private static final Duration RAW_SAMPLING_INTERVAL = Duration.ofSeconds(1);
+
+    /**
+     * 依請求跨度與可回傳的點數上限挑選層級。
+     *
+     * <p>兩個條件都要滿足：跨度要落在該層的保留範圍內，**而且**產生的點數不能超過上限。
+     * 只看跨度是不夠的——六小時的原始資料是 21,600 點，遠超過任何圖表畫得下的量。
+     *
+     * <p>點數超標時**往粗的層級退，而不是拒絕**。使用者要的是「這段時間發生什麼事」，
+     * 一小時精度的答案遠好過一則錯誤訊息；而回應裡的 resolution 欄位
+     * 會誠實告訴呼叫端他拿到的是哪一層。
+     *
+     * @throws IllegalArgumentException 連最粗的層級都超過上限時（例如查一百年）
+     */
+    public static Resolution forSpan(Duration span, int maxPoints) {
+        if (span == null || span.isNegative() || span.isZero()) {
             throw new IllegalArgumentException("查詢跨度必須為正");
         }
         for (Resolution resolution : values()) {
-            if (resolution.maxSpan == null || span.compareTo(resolution.maxSpan) <= 0) {
+            boolean withinSpan = resolution.maxSpan == null || span.compareTo(resolution.maxSpan) <= 0;
+            boolean withinBudget = resolution.estimatedPoints(span) <= maxPoints;
+            if (withinSpan && withinBudget) {
                 return resolution;
             }
         }
-        return ONE_HOUR;
+        long coarsest = ONE_HOUR.estimatedPoints(span);
+        throw new IllegalArgumentException(
+                "此區間即使以小時聚合仍有約 " + coarsest + " 個資料點，超過上限 " + maxPoints
+                        + "。請縮小時間範圍。");
     }
 
     /**
-     * 這個跨度會產生幾個時間桶。
+     * 這個跨度在本層會產生幾個資料點。
      *
-     * <p>用來在查詢真的送出去之前擋下「兩年 × 每分鐘」這種註定超時的請求。
-     * 事後加快取救不了這種查詢，因為第一次就會把資料庫打住。
+     * <p>用來在查詢真的送出去之前就決定該讀哪一層。
+     * 事後加快取救不了選錯層級的查詢，因為第一次就會把資料庫打住。
      */
-    public long estimatedBuckets(Duration span) {
-        if (bucketSize == null) {
-            // 原始層沒有固定桶大小，回報上限讓呼叫端一律當成「很多」處理
-            return Long.MAX_VALUE;
-        }
-        return span.toSeconds() / bucketSize.toSeconds();
+    public long estimatedPoints(Duration span) {
+        Duration interval = bucketSize != null ? bucketSize : RAW_SAMPLING_INTERVAL;
+        return span.toSeconds() / interval.toSeconds();
     }
 
     public String apiValue() {

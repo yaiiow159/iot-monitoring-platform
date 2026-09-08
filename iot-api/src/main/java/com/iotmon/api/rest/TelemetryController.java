@@ -3,6 +3,7 @@ package com.iotmon.api.rest;
 import com.iotmon.domain.device.DeviceId;
 import com.iotmon.domain.model.MetricKey;
 import com.iotmon.infrastructure.persistence.TimescaleTelemetryQuery;
+import org.springframework.dao.InvalidDataAccessApiUsageException;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -47,11 +48,22 @@ public class TelemetryController {
                     series.resolution().apiValue(),
                     series.points().stream().map(PointResponse::from).toList()));
 
-        } catch (IllegalArgumentException badRequest) {
-            // 包含「區間會產生太多點」。回 400 並說明原因，不安靜截斷——
-            // 少了一半資料的圖表比沒有圖表更危險，因為它看起來是對的。
-            return ResponseEntity.badRequest().body(new ErrorResponse(badRequest.getMessage()));
+        } catch (IllegalArgumentException | InvalidDataAccessApiUsageException badRequest) {
+            // 兩種型別都要接：Spring 會把 @Repository 拋出的 IllegalArgumentException
+            // 轉譯成 InvalidDataAccessApiUsageException，只接前者的話這裡會漏掉，
+            // 使用者收到的是 500 而不是帶有原因的 400。
+            return ResponseEntity.badRequest()
+                    .body(new ErrorResponse(rootMessage(badRequest)));
         }
+    }
+
+    /** 例外被轉譯過時，有用的訊息在最內層的 cause 上 */
+    private static String rootMessage(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current.getMessage();
     }
 
     /**
