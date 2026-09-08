@@ -176,6 +176,9 @@ java -jar iot-simulator/target/iot-simulator.jar --simulator.device-count=1000
 見 [docs/performance.md](docs/performance.md)。所有數字都標明量測條件；
 單機跑不出來的部分會明確說是推估值，不會混充實測。
 
+指標與 Grafana 儀表板見 [docs/observability.md](docs/observability.md)：
+`docker compose up` 後 `localhost:3002` 就有五列面板，由上到下對應遙測從裝置到畫面的路徑。
+
 ---
 
 ## 設計決策
@@ -187,3 +190,4 @@ java -jar iot-simulator/target/iot-simulator.jar --simulator.device-count=1000
 | [0003](docs/adr/0003-kafka-between-mqtt-and-consumers.md) | MQTT 之後為什麼還要 Kafka |
 | [0004](docs/adr/0004-lwt-over-heartbeat-timeout.md) | 用 LWT 而非心跳逾時偵測斷線 |
 | [0005](docs/adr/0005-tree-ltree-and-rollup-by-recompute.md) | 監控樹用 ltree 存路徑，告警上浮用子樹重算而非計數器 |
+| [0006](docs/adr/0006-device-rule-overrides-model-rule-by-metric.md) | 裝置規則以指標為單位取代機型規則 |

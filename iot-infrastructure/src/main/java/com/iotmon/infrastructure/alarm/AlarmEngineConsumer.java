@@ -10,6 +10,7 @@ import com.iotmon.infrastructure.mqtt.TelemetryEnvelope;
 import com.iotmon.infrastructure.persistence.DeviceCatalog;
 import com.iotmon.infrastructure.persistence.DeviceIdResolver;
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,6 +59,9 @@ public class AlarmEngineConsumer {
         this.kafka = kafka;
         this.fired = Counter.builder("alarm.fired").description("觸發的告警數").register(registry);
         this.resolved = Counter.builder("alarm.resolved").description("解除的告警數").register(registry);
+        // 狀態機追蹤中的「裝置×規則」數。一直漲不回落代表離線裝置的狀態沒被清掉
+        Gauge.builder("alarm.evaluator.tracked", evaluator, AlarmEvaluator::trackedBreaches)
+                .description("告警狀態機追蹤中的違反數").register(registry);
     }
 
     @KafkaListener(topics = MqttBridge.TOPIC_TELEMETRY, groupId = "iot-alarm-engine")

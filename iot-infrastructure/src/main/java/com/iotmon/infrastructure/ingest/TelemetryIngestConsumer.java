@@ -6,7 +6,9 @@ import com.iotmon.domain.model.MetricKey;
 import com.iotmon.domain.telemetry.TelemetryPoint;
 import com.iotmon.infrastructure.mqtt.TelemetryEnvelope;
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -17,6 +19,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Kafka → TimescaleDB 的寫入消費端。
@@ -36,6 +39,8 @@ public class TelemetryIngestConsumer {
     private final TelemetryWriter writer;
     private final Counter ingested;
     private final Counter rejected;
+    private final Timer endToEndLatency;
+    private final DistributionSummary batchSize;
 
     public TelemetryIngestConsumer(TelemetryWriter writer, MeterRegistry registry) {
         this.writer = writer;
@@ -43,6 +48,16 @@ public class TelemetryIngestConsumer {
                 .description("成功寫入的資料點數").register(registry);
         this.rejected = Counter.builder("telemetry.rejected")
                 .description("因格式或內容不合法而丟棄的資料點數").register(registry);
+        // 裝置打時間戳到寫入資料庫之間的延遲。這是「消費端跟不跟得上」最直接的訊號：
+        // lag 是積壓的訊息數，延遲才是使用者感受得到的秒數
+        this.endToEndLatency = Timer.builder("telemetry.ingest.latency")
+                .description("裝置時間戳到入庫的延遲")
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(registry);
+        this.batchSize = DistributionSummary.builder("telemetry.ingest.batch.size")
+                .description("每次 poll 展開後的資料點數")
+                .publishPercentiles(0.5, 0.95)
+                .register(registry);
     }
 
     @KafkaListener(topics = "iot.telemetry", groupId = "iot-telemetry-writer")
@@ -62,10 +77,21 @@ public class TelemetryIngestConsumer {
             return;
         }
 
+        batchSize.record(points.size());
         try {
             int written = writer.write(points);
             ingested.increment(written);
             ack.acknowledge();
+            // 只量整批裡最舊的那一則：批次內的差距是毫秒級，逐筆記錄每秒要多五萬次計時
+            long oldestTs = Long.MAX_VALUE;
+            for (TelemetryEnvelope envelope : envelopes) {
+                if (envelope != null && envelope.ts() < oldestTs) {
+                    oldestTs = envelope.ts();
+                }
+            }
+            if (oldestTs != Long.MAX_VALUE) {
+                endToEndLatency.record(Math.max(0, System.currentTimeMillis() - oldestTs), TimeUnit.MILLISECONDS);
+            }
         } catch (Exception e) {
             // 不 ack：這批會被重新投遞。重複寫入是可接受的，缺口不是。
             log.error("批次寫入失敗，{} 筆將重試：{}", points.size(), e.getMessage());
