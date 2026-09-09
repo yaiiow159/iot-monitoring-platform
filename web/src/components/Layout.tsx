@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Clock } from './Clock';
 import { USE_MOCK } from '../api';
 import { clearSession, ROLE_LABEL, useSession } from '../auth/session';
 import { useLive } from '../live/LiveContext';
@@ -24,6 +25,11 @@ export function Layout() {
 
   return (
     <div className="app">
+      {/* 環境光層：點陣網格、緩慢漂移的光暈、極淡的掃描線。純裝飾，不擋滑鼠 */}
+      <div className="ambient" aria-hidden="true">
+        <span className="ambient-glow ambient-glow-a" />
+        <span className="ambient-glow ambient-glow-b" />
+      </div>
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true" />
@@ -46,6 +52,7 @@ export function Layout() {
         </nav>
 
         <div className="topbar-right">
+          <Clock />
           {USE_MOCK && <span className="badge badge-mock">MOCK</span>}
           <span className="sub num" title="只訂閱目前畫面上看得到的裝置">
             訂閱 {formatInt(subscribedCount)} 台

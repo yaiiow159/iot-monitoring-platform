@@ -8,10 +8,14 @@
 
 :root {
   /* 背景三層：頁面底 → 卡片面 → 浮起面，色相統一落在 215° 左右 */
-  --surface-0: #0b1219;
-  --surface-1: #111a26;
-  --surface-2: #182434;
-  --surface-3: #1f2e42;
+  --surface-0: #070b11;
+  --surface-1: #0f1722;
+  --surface-2: #162130;
+  --surface-3: #1e2c3f;
+  /* 玻璃面板：半透明，讓底層的網格與光暈透一點上來 */
+  --glass: rgba(15, 23, 34, 0.78);
+  --glass-strong: rgba(15, 23, 34, 0.92);
+  --glow: rgba(95, 212, 230, 0.35);
 
   /* 髮絲線只在需要切開內容時用，平常靠明度分層 */
   --line: rgba(158, 184, 219, 0.09);
@@ -53,7 +57,7 @@
   --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
 
   /* 字級階層 */
-  --fs-display: 34px;
+  --fs-display: 38px;
   --fs-heading: 15px;
   --fs-body: 13px;
   --fs-data: 12px;
@@ -1976,4 +1980,536 @@ tr.audit-DENIED td:first-child {
 }
 .replay-readings td.num {
   white-space: nowrap;
+}
+
+
+/* ============================================================ 科技感分層
+ * 這一段整體覆蓋上面的基礎樣式：底層網格與光暈、玻璃面板、HUD 角標、發光數字、
+ * 槽位立體感與告警脈動。原則不變——強調色只有一個，語意色只代表狀態，
+ * 動效全部在 reduced-motion 下關掉。
+ * ============================================================ */
+
+/* ---------- 環境光層 */
+
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  /* 點陣網格＋掃描線：兩層都極淡，只在大面積深色裡給眼睛一個「這是螢幕」的質感 */
+  background-image:
+    radial-gradient(rgba(158, 184, 219, 0.11) 1px, transparent 1.2px),
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 3px);
+  background-size:
+    26px 26px,
+    100% 3px;
+  mask-image: radial-gradient(120% 90% at 50% 0%, #000 40%, transparent 100%);
+}
+.ambient::after {
+  /* 頂部一道青色地平線 */
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb), 0.55) 30%, rgba(var(--accent-rgb), 0.55) 70%, transparent);
+  opacity: 0.6;
+}
+
+.ambient-glow {
+  position: absolute;
+  width: 62vw;
+  height: 62vw;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.35;
+  will-change: transform;
+}
+.ambient-glow-a {
+  left: -18vw;
+  top: -30vw;
+  background: radial-gradient(circle, rgba(var(--accent-rgb), 0.5), transparent 62%);
+  animation: drift-a 52s ease-in-out infinite alternate;
+}
+.ambient-glow-b {
+  right: -24vw;
+  bottom: -34vw;
+  background: radial-gradient(circle, rgba(var(--info-rgb), 0.32), transparent 62%);
+  animation: drift-b 64s ease-in-out infinite alternate;
+}
+@keyframes drift-a {
+  to {
+    transform: translate(10vw, 8vw);
+  }
+}
+@keyframes drift-b {
+  to {
+    transform: translate(-8vw, -10vw);
+  }
+}
+
+.app > *:not(.ambient),
+.login-card {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- 頂欄：玻璃、底緣光線、旋轉聲納 */
+
+.topbar {
+  background: var(--glass-strong);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow:
+    inset 0 -1px 0 var(--line),
+    0 10px 30px -20px rgba(0, 0, 0, 0.8);
+  position: relative;
+}
+.topbar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.7), transparent 45%);
+}
+
+.brand-mark {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  background: radial-gradient(circle, var(--accent) 0 30%, transparent 32%);
+  box-shadow:
+    inset 0 0 0 1px var(--accent-line),
+    0 0 12px var(--glow);
+}
+.brand-mark::before {
+  /* 掃描扇面：一圈 conic 漸層慢速旋轉，聲納就該轉 */
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(var(--accent-rgb), 0.55), transparent 28%);
+  animation: sonar 4s linear infinite;
+}
+@keyframes sonar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.brand-name {
+  letter-spacing: 0.04em;
+}
+
+.nav-item.active::after {
+  box-shadow: 0 0 10px var(--glow);
+}
+
+.clock {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: var(--fs-data);
+  letter-spacing: 0.04em;
+}
+.clock-date {
+  color: var(--text-3);
+}
+.clock-time {
+  color: var(--accent);
+  font-weight: 500;
+  font-size: 13px;
+}
+.clock-colon {
+  animation: pulse 1s steps(2, start) infinite;
+}
+
+.conn {
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.conn-open .conn-dot {
+  box-shadow:
+    0 0 0 3px rgba(var(--online-rgb), 0.18),
+    0 0 10px rgba(var(--online-rgb), 0.7);
+  animation: breathe 2.6s ease-in-out infinite;
+}
+@keyframes breathe {
+  50% {
+    box-shadow:
+      0 0 0 5px rgba(var(--online-rgb), 0.08),
+      0 0 14px rgba(var(--online-rgb), 0.9);
+  }
+}
+
+/* ---------- 面板：玻璃 + 頂緣光線 + HUD 角標 */
+
+.panel,
+.stat,
+.login-card {
+  position: relative;
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow:
+    inset 0 0 0 1px var(--line),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 20px 40px -30px rgba(0, 0, 0, 0.9);
+}
+.panel::before,
+.stat::before {
+  /* 頂緣一道從左側淡出的青色光線：面板的「電源指示燈」 */
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 40%;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.6), transparent);
+  pointer-events: none;
+}
+.panel::after {
+  /* 四個角落的 HUD 角標：兩條 1px 線組一個 L，四個 L 用八道漸層畫在同一個偽元素上 */
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  --c: rgba(var(--accent-rgb), 0.5);
+  background:
+    linear-gradient(var(--c), var(--c)) top left / 12px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) top left / 1px 12px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 12px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 1px 12px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 12px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 1px 12px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 12px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 1px 12px no-repeat;
+  opacity: 0.7;
+  transition: opacity var(--t-base) var(--ease);
+}
+.panel:hover::after {
+  opacity: 1;
+}
+
+.panel-head h2 {
+  padding-left: 12px;
+  position: relative;
+  letter-spacing: 0.02em;
+}
+.panel-head h2::before {
+  /* 標題左側的發光短桿 */
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--glow);
+}
+
+/* 進場：面板依序淡入上浮，只做一次 */
+.page > .panel,
+.page > .split > .panel,
+.page > .tree-layout > .panel,
+.page > .stat-row > .stat {
+  animation: rise 520ms var(--ease) both;
+}
+.page > .stat-row > .stat:nth-child(2) { animation-delay: 50ms; }
+.page > .stat-row > .stat:nth-child(3) { animation-delay: 100ms; }
+.page > .stat-row > .stat:nth-child(4) { animation-delay: 150ms; }
+.page > .stat-row > .stat:nth-child(5) { animation-delay: 200ms; }
+.page > .stat-row > .stat:nth-child(6) { animation-delay: 250ms; }
+.page > .split > .panel:nth-child(2),
+.page > .tree-layout > .panel:nth-child(2) { animation-delay: 120ms; }
+.page > .panel:nth-child(2) { animation-delay: 80ms; }
+.page > .panel:nth-child(3) { animation-delay: 160ms; }
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* ---------- KPI：發光大數字、HUD 序號 */
+
+.stat-row {
+  counter-reset: stat;
+}
+.stat {
+  padding: 16px 18px 14px;
+  overflow: hidden;
+  counter-increment: stat;
+}
+.stat::after {
+  /* 右上角的序號：純裝飾，但它讓六張卡讀起來像儀表上的一排儀器 */
+  content: counter(stat, decimal-leading-zero);
+  position: absolute;
+  right: 12px;
+  top: 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--text-3);
+  opacity: 0.55;
+}
+.stat:hover {
+  background: var(--glass-strong);
+  box-shadow:
+    inset 0 0 0 1px var(--line-strong),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 20px 40px -26px rgba(var(--accent-rgb), 0.35);
+}
+.stat-value {
+  font-weight: 700;
+  text-shadow: 0 0 22px rgba(255, 255, 255, 0.12);
+}
+.stat-ONLINE .stat-value { text-shadow: 0 0 24px rgba(var(--online-rgb), 0.35); }
+.stat-DEGRADED .stat-value { text-shadow: 0 0 24px rgba(var(--degraded-rgb), 0.3); }
+.stat-OFFLINE .stat-value { text-shadow: 0 0 24px rgba(var(--offline-rgb), 0.3); }
+.stat-rate .stat-value {
+  text-shadow: 0 0 26px rgba(var(--accent-rgb), 0.55);
+}
+.stat-alarm.is-hot {
+  animation: hot 2.4s ease-in-out infinite;
+}
+.stat-alarm.is-hot .stat-value {
+  text-shadow: 0 0 26px rgba(var(--offline-rgb), 0.6);
+}
+.stat-alarm.is-hot::before {
+  background: linear-gradient(90deg, rgba(var(--offline-rgb), 0.9), transparent);
+}
+@keyframes hot {
+  50% {
+    box-shadow:
+      inset 0 0 0 1px rgba(var(--offline-rgb), 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 0 28px -8px rgba(var(--offline-rgb), 0.5);
+  }
+}
+
+/* ---------- 機櫃與槽位：立體、發光、告警脈動 */
+
+.cabinet {
+  background: linear-gradient(180deg, rgba(22, 33, 48, 0.9), rgba(15, 23, 34, 0.9));
+  box-shadow:
+    inset 0 0 0 1px var(--line),
+    0 14px 30px -24px rgba(0, 0, 0, 0.9);
+}
+.cabinet:hover {
+  background: linear-gradient(180deg, rgba(30, 44, 63, 0.95), rgba(22, 33, 48, 0.95));
+  box-shadow:
+    inset 0 0 0 1px var(--line-strong),
+    0 18px 34px -22px rgba(var(--accent-rgb), 0.35);
+}
+.cabinet-id {
+  text-shadow: 0 0 14px rgba(255, 255, 255, 0.15);
+}
+
+.rack {
+  background: linear-gradient(180deg, #05080c, #0a1018);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.7),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.slot {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 55%, rgba(0, 0, 0, 0.25));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+}
+.slot-empty {
+  background-image: none;
+  background: var(--empty);
+  box-shadow: inset 0 0 0 1px rgba(158, 184, 219, 0.07);
+}
+.slot-ONLINE {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 0 6px rgba(var(--online-rgb), 0.35);
+}
+.slot-OFFLINE {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 0 5px rgba(var(--offline-rgb), 0.25);
+}
+/* 告警槽位：白框之外再加一圈持續呼吸的紅色光暈，掃視整面牆時最先看到它 */
+.slot-alarm {
+  animation:
+    slot-alarm-in 900ms var(--ease) 1,
+    slot-alarm-breathe 1.8s ease-in-out 900ms infinite;
+}
+@keyframes slot-alarm-breathe {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.2),
+      0 0 0 1.5px var(--text-1),
+      0 0 0 0 rgba(var(--offline-rgb), 0);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.2),
+      0 0 0 1.5px var(--text-1),
+      0 0 0 4px rgba(var(--offline-rgb), 0.35);
+  }
+}
+
+/* ---------- 表格：表頭光線、列的懸停光暈 */
+
+.data-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--glass-strong);
+  backdrop-filter: blur(8px);
+  letter-spacing: 0.1em;
+  z-index: 1;
+}
+.data-table thead tr {
+  box-shadow: inset 0 -1px 0 rgba(var(--accent-rgb), 0.25);
+}
+.data-table tbody tr:hover {
+  background: rgba(var(--accent-rgb), 0.05);
+}
+
+/* ---------- 控制項：按鈕光暈、輸入框聚焦光環 */
+
+.btn {
+  background: rgba(255, 255, 255, 0.03);
+}
+.btn:hover:not(:disabled) {
+  background: rgba(var(--accent-rgb), 0.08);
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--accent-rgb), 0.45),
+    0 0 14px -4px var(--glow);
+  color: var(--accent);
+}
+.btn-primary {
+  background: linear-gradient(180deg, #7fe0ee, var(--accent) 60%, #3fbfd3);
+  color: var(--accent-ink);
+  box-shadow:
+    0 0 0 1px rgba(var(--accent-rgb), 0.6),
+    0 8px 20px -10px var(--glow);
+}
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #96e8f3, #7fe0ee 60%, var(--accent));
+  color: var(--accent-ink);
+  box-shadow:
+    0 0 0 1px rgba(var(--accent-rgb), 0.8),
+    0 10px 26px -8px rgba(var(--accent-rgb), 0.8);
+}
+.input {
+  background: rgba(5, 8, 12, 0.7);
+}
+.input:focus {
+  box-shadow:
+    inset 0 0 0 1px var(--accent),
+    0 0 0 3px rgba(var(--accent-rgb), 0.15),
+    0 0 16px -4px var(--glow);
+}
+
+.tabs {
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+.tab.active::after {
+  box-shadow: 0 0 10px var(--glow);
+}
+
+/* ---------- 嚴重度與狀態：色點帶光 */
+
+.sev::before,
+.state::before,
+.dot-ONLINE,
+.dot-DEGRADED,
+.dot-OFFLINE,
+.rollup-dot {
+  box-shadow: 0 0 8px currentColor;
+}
+.dot-ONLINE { color: var(--online); }
+.dot-DEGRADED { color: var(--degraded); }
+.dot-OFFLINE { color: var(--offline); }
+
+.badge-alarm {
+  box-shadow: inset 0 0 0 1px rgba(var(--offline-rgb), 0.35);
+}
+
+/* ---------- 監控樹：選中列的光條 */
+
+.tree-row.is-selected {
+  background: rgba(var(--accent-rgb), 0.08);
+  box-shadow: inset 2px 0 0 var(--accent), 0 0 18px -8px var(--glow);
+}
+
+/* ---------- 歷史回放：滑桿與標記發光 */
+
+.replay-slider::-webkit-slider-thumb {
+  box-shadow: 0 0 12px var(--glow);
+}
+.replay-marker {
+  box-shadow: 0 0 8px currentColor;
+}
+.sev-bg-CRITICAL { color: var(--critical); }
+.sev-bg-WARNING { color: var(--warning); }
+.sev-bg-INFO { color: var(--info); }
+.latency-ok {
+  text-shadow: 0 0 12px rgba(var(--online-rgb), 0.6);
+}
+
+/* ---------- 登入頁：卡片邊緣旋轉的光帶 */
+
+.login-screen {
+  position: relative;
+  background: var(--surface-0);
+  overflow: hidden;
+}
+.login-card {
+  overflow: visible;
+  box-shadow:
+    inset 0 0 0 1px var(--line-strong),
+    0 40px 80px -40px rgba(0, 0, 0, 0.9),
+    0 0 80px -30px var(--glow);
+}
+.login-card::before {
+  /* 一圈細細的光沿著卡片邊緣慢慢繞，這是整個系統唯一「炫」的地方 */
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(from var(--angle, 0deg), transparent 0 70%, rgba(var(--accent-rgb), 0.9) 85%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: orbit 6s linear infinite;
+  pointer-events: none;
+}
+@property --angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes orbit {
+  to {
+    --angle: 360deg;
+  }
+}
+.login-card .brand-name {
+  font-size: 16px;
+}
+
+/* ---------- 減少動態：全部關掉，前面那條規則已涵蓋 animation/transition，這裡補上光暈漂移 */
+@media (prefers-reduced-motion: reduce) {
+  .ambient-glow {
+    animation: none;
+  }
 }

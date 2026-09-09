@@ -34,6 +34,10 @@ export function Login() {
 
   return (
     <div className="login-screen">
+      <div className="ambient" aria-hidden="true">
+        <span className="ambient-glow ambient-glow-a" />
+        <span className="ambient-glow ambient-glow-b" />
+      </div>
       <form className="login-card" onSubmit={submit}>
         <div className="brand">
           <span className="brand-mark" aria-hidden="true" />
