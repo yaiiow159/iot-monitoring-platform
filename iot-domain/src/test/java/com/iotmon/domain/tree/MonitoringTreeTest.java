@@ -208,4 +208,25 @@ class MonitoringTreeTest {
             assertThrows(IllegalArgumentException.class, () -> Rollup.of(null, -1));
         }
     }
+
+    @Nested
+    @DisplayName("子樹")
+    class Subtree {
+
+        @Test
+        @DisplayName("以非根節點為起點的子樹也組得出來：父節點不在集合裡的節點就是根")
+        void subtreeRootedAtSensorBuilds() {
+            TreeNode phaseB = sensor(5, EQUIP, "B 相", 500);
+            TreeNode intake = sensor(6, phaseB, "進風側", 1000);
+            TreeNode meter = device(7, intake, "電流計", 1000);
+
+            // 模擬 findSubtree(5)：只有 5 與它的後代，Equipment 不在裡面
+            List<MonitoringTree.Branch> roots = MonitoringTree.build(List.of(meter, intake, phaseB), Map.of());
+
+            assertEquals(1, roots.size());
+            assertEquals(5L, roots.get(0).node().id());
+            assertEquals(List.of(6L), roots.get(0).children().stream().map(b -> b.node().id()).toList());
+            assertEquals(List.of(7L), roots.get(0).children().get(0).children().stream().map(b -> b.node().id()).toList());
+        }
+    }
 }

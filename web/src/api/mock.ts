@@ -2,6 +2,8 @@ import type {
   Alarm,
   AlarmRule,
   AlarmSeverity,
+  AppUser,
+  AuditEntry,
   Cabinet,
   CabinetType,
   CreateNodeRequest,
@@ -15,6 +17,7 @@ import type {
   NodeKind,
   Overview,
   Resolution,
+  Role,
   SubscribeMessage,
   TelemetryPoint,
   TelemetryQuery,
@@ -766,6 +769,28 @@ class MockLiveSocket implements LiveSocket {
 
 let nextRuleId = alarmRules.length + 1;
 
+const mockUsers: AppUser[] = [
+  { id: 1, username: 'admin', role: 'ADMIN', displayName: '系統管理員', enabled: true, createdAt: new Date(Date.now() - 30 * DAY).toISOString() },
+  { id: 2, username: 'operator', role: 'OPERATOR', displayName: '值班工程師', enabled: true, createdAt: new Date(Date.now() - 20 * DAY).toISOString() },
+  { id: 3, username: 'viewer', role: 'VIEWER', displayName: '訪客', enabled: true, createdAt: new Date(Date.now() - 10 * DAY).toISOString() },
+];
+
+const mockAudit: AuditEntry[] = Array.from({ length: 40 }, (_, i) => {
+  const actors = ['admin', 'operator', 'viewer'];
+  const actor = actors[i % 3];
+  const denied = actor === 'viewer';
+  return {
+    id: 40 - i,
+    at: new Date(Date.now() - i * 37 * 60_000).toISOString(),
+    actor,
+    action: denied ? 'POST /api/v1/models' : i % 2 ? 'POST /api/v1/alarm-rules' : 'POST /api/v1/devices',
+    targetType: denied ? 'models' : i % 2 ? 'alarm-rules' : 'devices',
+    targetId: null,
+    outcome: denied ? 'DENIED' : i % 5 === 0 ? 'REJECTED' : 'OK',
+    detail: { method: 'POST', status: denied ? 403 : i % 5 === 0 ? 400 : 201 },
+  };
+});
+
 export const mockApi: IotApi = {
   async getOverview(): Promise<Overview> {
     await delay(80);
@@ -839,9 +864,94 @@ export const mockApi: IotApi = {
 
   async createAlarmRule(rule) {
     await delay(120);
-    const created: AlarmRule = { id: nextRuleId++, ...rule };
+    if (!!rule.modelCode === !!rule.deviceId) throw new Error('規則必須綁定機型或裝置，且只能擇一');
+    const created: AlarmRule = {
+      id: nextRuleId++,
+      ...rule,
+      modelCode: rule.modelCode ?? null,
+      deviceId: rule.deviceId ?? null,
+    };
     alarmRules.push(created);
     return created;
+  },
+
+  async createCabinet(request) {
+    await delay(80);
+    const id = `CAB-${pad(cabinets.length + 1, 3)}`;
+    const created: Cabinet = { id, ...request, name: request.name || id };
+    cabinets.push(created);
+    return created;
+  },
+
+  async registerDevice(request) {
+    await delay(100);
+    if (deviceById.has(request.deviceId)) throw new Error('裝置代號、序號或機櫃槽位已被使用');
+    if (!MODEL_BY_CODE.has(request.modelCode)) throw new Error(`機型不存在：${request.modelCode}`);
+    const cabinet = request.cabinetId ? cabinets.find((c) => c.id === request.cabinetId) : undefined;
+    if (request.cabinetId && !cabinet) throw new Error(`機櫃不存在：${request.cabinetId}`);
+    if (cabinet && (request.slot ?? 0) > cabinet.slotCount) {
+      throw new Error(`槽位 ${request.slot} 超出機櫃 ${cabinet.id} 的範圍（1~${cabinet.slotCount}）`);
+    }
+    const created: Device = {
+      deviceId: request.deviceId,
+      name: request.name || request.deviceId,
+      modelCode: request.modelCode,
+      cabinetId: cabinet?.id ?? '',
+      slot: request.slot ?? 0,
+      status: 'UNKNOWN',
+      lastSeenAt: null,
+    };
+    devices.push(created);
+    deviceById.set(created.deviceId, created);
+    if (cabinet) {
+      const list = devicesByCabinet.get(cabinet.id);
+      if (list) list.push(created);
+      else devicesByCabinet.set(cabinet.id, [created]);
+    }
+    return created;
+  },
+
+  /** MOCK 的登入不驗密碼：帳號名含 admin／operator 決定角色，其餘唯讀 */
+  async login(request) {
+    await delay(150);
+    const u = request.username.trim();
+    if (!u || !request.password) throw new Error('帳號或密碼錯誤');
+    const role: Role = u.includes('admin') ? 'ADMIN' : u.includes('operator') ? 'OPERATOR' : 'VIEWER';
+    return {
+      token: `mock-${u}`,
+      username: u,
+      role,
+      displayName: u,
+      expiresAt: new Date(Date.now() + 12 * HOUR).toISOString(),
+    };
+  },
+
+  async listUsers() {
+    await delay(60);
+    return mockUsers.map((u) => ({ ...u }));
+  },
+
+  async createUser(request) {
+    await delay(100);
+    if (mockUsers.some((u) => u.username === request.username)) throw new Error('帳號已存在');
+    const created: AppUser = {
+      id: mockUsers.length + 1,
+      username: request.username,
+      role: request.role,
+      displayName: request.displayName || request.username,
+      enabled: true,
+      createdAt: new Date().toISOString(),
+    };
+    mockUsers.push(created);
+    return created;
+  },
+
+  async listAudit(params = {}) {
+    await delay(70);
+    return mockAudit
+      .filter((e) => !params.actor || e.actor === params.actor)
+      .slice(0, params.limit ?? 100)
+      .map((e) => ({ ...e }));
   },
 
   queryTelemetry,

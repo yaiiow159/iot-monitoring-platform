@@ -1,5 +1,6 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { USE_MOCK } from '../api';
+import { clearSession, ROLE_LABEL, useSession } from '../auth/session';
 import { useLive } from '../live/LiveContext';
 import { formatInt } from '../utils/format';
 
@@ -9,8 +10,17 @@ const CONNECTION_TEXT = {
   closed: '連線中斷',
 } as const;
 
+const navClass = ({ isActive }: { isActive: boolean }) => (isActive ? 'nav-item active' : 'nav-item');
+
 export function Layout() {
   const { connection, subscribedCount } = useLive();
+  const session = useSession();
+  const navigate = useNavigate();
+
+  function logout() {
+    clearSession();
+    navigate('/login', { replace: true });
+  }
 
   return (
     <div className="app">
@@ -21,16 +31,13 @@ export function Layout() {
         </div>
 
         <nav className="nav">
-          <NavLink to="/" end className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
+          <NavLink to="/" end className={navClass}>
             總覽
           </NavLink>
-          <NavLink to="/tree" className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
+          <NavLink to="/tree" className={navClass}>
             監控樹
           </NavLink>
-          <NavLink
-            to="/config"
-            className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
-          >
+          <NavLink to="/config" className={navClass}>
             設定中心
           </NavLink>
         </nav>
@@ -44,6 +51,15 @@ export function Layout() {
             <span className="conn-dot" />
             {CONNECTION_TEXT[connection]}
           </span>
+          {session && (
+            <span className="user-chip" title={session.user.username}>
+              <span className={`role role-${session.user.role}`}>{ROLE_LABEL[session.user.role]}</span>
+              <span>{session.user.displayName}</span>
+              <button type="button" className="link-btn" onClick={logout}>
+                登出
+              </button>
+            </span>
+          )}
         </div>
       </header>
 

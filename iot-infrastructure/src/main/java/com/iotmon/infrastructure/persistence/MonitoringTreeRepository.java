@@ -122,7 +122,10 @@ public class MonitoringTreeRepository {
     @Transactional
     public TreeNode insert(TreeNode node, Long parentId) {
         Integer deviceRowId = node.device()
-                .map(d -> jdbc.queryForObject("SELECT id FROM device WHERE device_id = ?", Integer.class, d.value()))
+                .map(d -> jdbc.query("SELECT id FROM device WHERE device_id = ?", (rs, i) -> rs.getInt("id"), d.value())
+                        .stream().findFirst()
+                        // 掛一台不存在的裝置是設定錯誤，要回 400 帶原因，不是 500
+                        .orElseThrow(() -> new IllegalArgumentException("裝置不存在：" + d.value())))
                 .orElse(null);
 
         long sortOrder = node.sortOrder() > 0 ? node.sortOrder() : nextSortOrder(parentId);

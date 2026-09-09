@@ -6,6 +6,7 @@ import com.iotmon.domain.tree.NodeKind;
 import com.iotmon.domain.tree.Rollup;
 import com.iotmon.domain.tree.TreeNode;
 import com.iotmon.infrastructure.persistence.MonitoringTreeRepository;
+import org.springframework.dao.InvalidDataAccessApiUsageException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -78,8 +79,13 @@ public class TreeController {
 
             TreeNode saved = repository.insert(candidate, request.parentId());
             return ResponseEntity.status(HttpStatus.CREATED).body(PlainNode.from(saved));
-        } catch (IllegalArgumentException invalid) {
-            return ResponseEntity.badRequest().body(Map.of("message", invalid.getMessage()));
+        } catch (IllegalArgumentException | InvalidDataAccessApiUsageException invalid) {
+            // @Repository 裡拋的 IllegalArgumentException 會被 Spring 轉譯，訊息在最內層
+            Throwable root = invalid;
+            while (root.getCause() != null && root.getCause() != root) {
+                root = root.getCause();
+            }
+            return ResponseEntity.badRequest().body(Map.of("message", String.valueOf(root.getMessage())));
         }
     }
 

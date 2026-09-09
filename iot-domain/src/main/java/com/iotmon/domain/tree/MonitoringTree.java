@@ -7,7 +7,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 把扁平的節點清單組成有序、帶彙總的樹。
@@ -33,9 +35,15 @@ public final class MonitoringTree {
     public static List<Branch> build(Collection<TreeNode> nodes, Map<Long, Rollup> ownAlarms) {
         Map<Long, List<TreeNode>> childrenByParent = new HashMap<>();
         List<TreeNode> roots = new ArrayList<>();
+        Set<Long> present = new HashSet<>();
+        for (TreeNode node : nodes) {
+            present.add(node.id());
+        }
 
         for (TreeNode node : nodes) {
-            if (node.isRoot()) {
+            // 「根」是相對於這一批節點而言：查某個 Sensor 的子樹時，它的父節點不在集合裡，它就是根。
+            // 只認 parentId == null 的話，任何非 Equipment 節點的子樹都會組出空森林。
+            if (node.isRoot() || !present.contains(node.parentId())) {
                 roots.add(node);
             } else {
                 childrenByParent.computeIfAbsent(node.parentId(), k -> new ArrayList<>()).add(node);

@@ -209,6 +209,27 @@ WebSocket 的 `alarm` 推播會多帶 `ancestorIds`（由上到下），
 
 ---
 
+## 登入與權限
+
+所有 `/api/**` 都要登入；`/api/v1/auth/login`、`/actuator/**`、WebSocket 握手（自己驗 token）免登入。
+角色只有三種，授權規則集中在 `SecurityConfig` 一處，控制器裡不檢查角色。
+
+| 角色 | 能做 |
+|---|---|
+| `ADMIN` | 全部：機型、機櫃、告警規則、使用者、稽核 |
+| `OPERATOR` | 讀全部；註冊裝置、調整監控樹 |
+| `VIEWER` | 只讀 |
+
+| 端點 | 說明 |
+|---|---|
+| `POST /auth/login` `{username, password}` | 回 `{token, username, role, displayName, expiresAt}`；帳號不存在與密碼錯誤同一句話、同樣耗時 |
+| `GET /auth/me` | 目前登入者與 `canConfigure`／`canOperate` |
+| `GET/POST /users` | ADMIN；密碼至少 8 字元，bcrypt |
+| `GET /audit?limit&actor` | ADMIN；每一個非 GET 的 `/api/v1/**` 請求都有一筆，含被 401／403／400 擋下的，`outcome` 為 `OK`／`REJECTED`／`DENIED`／`FAILED` |
+
+REST 帶 `Authorization: Bearer <token>`；WebSocket 帶 `?token=<token>`（瀏覽器的 WebSocket 不能設標頭）。
+401 與 403 的回應形狀跟其他錯誤一樣是 `{"message": "..."}`。
+
 ## 實作狀態（2026-09-09）
 
 契約先於實作寫定，這張表說明「現在哪些端點真的在」。全部端點已實作並以 curl 逐一驗證，
@@ -217,7 +238,7 @@ WebSocket 的 `alarm` 推播會多帶 `ancestorIds`（由上到下），
 | 端點 | 狀態 |
 |---|---|
 | `GET /telemetry` | ✅ 三層路由、resolution 欄位、400 拒絕過大範圍 |
-| `GET /tree`、`/tree/{id}`、`/tree/{id}/ancestors`、`POST /tree/nodes`、`PATCH …/order` | ✅ |
+| `GET /tree`、`/tree/{id}`、`/tree/{id}/ancestors`、`POST /tree/nodes`、`PATCH …/order` | ✅ `/tree/{id}` 以任何節點為根都組得出子樹（原本只認 Equipment，非根節點回 404）；掛不存在的裝置回 400 |
 | WebSocket `/ws/live`（telemetry 節流、status、alarm 帶 ancestorIds） | ✅ |
 | `GET /overview` | ✅ 四種狀態都有 key；`ingestRatePerSecond` 取過去 10 秒原始表計數 ÷ 10 |
 | `GET /devices?status&cabinetId&modelCode`、`GET /devices/{id}` | ✅ 清單上限 1000 筆，排序＝機櫃→槽位→代號；單筆不存在回 404 |
@@ -225,6 +246,7 @@ WebSocket 的 `alarm` 推播會多帶 `ancestorIds`（由上到下），
 | `GET/POST /models` | ✅ 機型與指標同一交易寫入；`DeviceModel.of` 擋空指標、重複指標 |
 | `GET/POST /cabinets` | ✅ `id` 就是機櫃 `code`（前端拿它當顯示名稱與 `Device.cabinetId` 的關聯鍵）；資料表的數值 id 不外露 |
 | `GET/POST /alarm-rules` | ✅ 綁機型（`modelCode`）或綁裝置（`deviceId`）擇一；裝置規則以指標為單位取代機型規則（ADR-0006），建立時一併解除被取代的告警。建立前以 `AlarmRule.isMeaningfulFor` 擋掉門檻落在量程外的規則 |
+| `POST /auth/login`、`/auth/me`、`GET/POST /users`、`GET /audit` | ✅ 見「登入與權限」 |
 | `GET /alarms?state&deviceId&limit` | ✅ 一次 join 裝置與規則；FIRING 排前、再依觸發時間新到舊；`limit` 上限 500 |
 
 ### 回應形狀上的取捨

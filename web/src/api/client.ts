@@ -1,10 +1,15 @@
+import { clearSession, getToken } from '../auth/session';
 import type {
   Alarm,
   AlarmRule,
   AlarmState,
+  AppUser,
+  AuditEntry,
   Cabinet,
   CreateAlarmRuleRequest,
+  CreateCabinetRequest,
   CreateNodeRequest,
+  CreateUserRequest,
   Device,
   DeviceModel,
   DeviceQuery,
@@ -12,7 +17,10 @@ import type {
   LiveEvent,
   LiveSocket,
   LiveSocketHandlers,
+  LoginRequest,
+  LoginResponse,
   Overview,
+  RegisterDeviceRequest,
   SubscribeMessage,
   TelemetryQuery,
   TelemetrySeries,
@@ -21,10 +29,10 @@ import type {
 } from './types';
 
 /** 留空時走 vite dev proxy 的相對路徑，免得開發與正式各記一組網址。 */
-const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1';
 
 const WS_URL =
-  import.meta.env.VITE_WS_URL ??
+  import.meta.env.VITE_WS_URL ||
   `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/live`;
 
 export class ApiError extends Error {
@@ -33,15 +41,32 @@ export class ApiError extends Error {
   }
 }
 
+/** 後端的錯誤一律是 {"message": "..."}；解不出來就用原文，總比只給狀態碼好。 */
+function messageOf(text: string, fallback: string): string {
+  try {
+    const parsed = JSON.parse(text) as { message?: string };
+    if (parsed && typeof parsed.message === 'string') return parsed.message;
+  } catch {
+    // 不是 JSON
+  }
+  return text || fallback;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getToken();
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers ?? {}),
+    },
   });
   if (!res.ok) {
-    // 契約規定 maxPoints 超限會回 400 並說明原因，把訊息帶出來使用者才知道要縮小範圍。
     const detail = await res.text().catch(() => '');
-    throw new ApiError(res.status, detail || `${res.status} ${res.statusText}`);
+    // 401 代表 token 失效：清掉登入狀態，RequireAuth 會把人送回登入頁
+    if (res.status === 401 && !path.startsWith('/auth/login')) clearSession();
+    throw new ApiError(res.status, messageOf(detail, `${res.status} ${res.statusText}`));
   }
   return (await res.json()) as T;
 }
@@ -74,7 +99,13 @@ class ReconnectingLiveSocket implements LiveSocket {
 
   private open(): void {
     if (this.closed) return;
-    const ws = new WebSocket(WS_URL);
+    // 瀏覽器的 WebSocket 不能設 Authorization 標頭，token 走查詢參數；沒登入就不連
+    const token = getToken();
+    if (!token) {
+      this.handlers.onClose();
+      return;
+    }
+    const ws = new WebSocket(`${WS_URL}?token=${encodeURIComponent(token)}`);
     this.ws = ws;
 
     ws.onopen = () => {
@@ -124,6 +155,16 @@ class ReconnectingLiveSocket implements LiveSocket {
 }
 
 export const httpApi: IotApi = {
+  login: (body: LoginRequest) =>
+    request<LoginResponse>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
+
+  listUsers: () => request<AppUser[]>('/users'),
+
+  createUser: (body: CreateUserRequest) =>
+    request<AppUser>('/users', { method: 'POST', body: JSON.stringify(body) }),
+
+  listAudit: (params = {}) => request<AuditEntry[]>(`/audit${qs({ limit: params.limit, actor: params.actor })}`),
+
   getOverview: () => request<Overview>('/overview'),
 
   listModels: () => request<DeviceModel[]>('/models'),
@@ -132,6 +173,9 @@ export const httpApi: IotApi = {
     request<DeviceModel>('/models', { method: 'POST', body: JSON.stringify(model) }),
 
   listCabinets: () => request<Cabinet[]>('/cabinets'),
+
+  createCabinet: (body: CreateCabinetRequest) =>
+    request<Cabinet>('/cabinets', { method: 'POST', body: JSON.stringify(body) }),
 
   listDevices: (query: DeviceQuery = {}) =>
     request<Device[]>(
@@ -148,9 +192,11 @@ export const httpApi: IotApi = {
     }
   },
 
+  registerDevice: (body: RegisterDeviceRequest) =>
+    request<Device>('/devices', { method: 'POST', body: JSON.stringify(body) }),
+
   listAlarms: (params = {}) =>
     request<Alarm[]>(
-      // 契約只列了 state，deviceId 是裝置詳情的告警歷史所需，後端要一併支援。
       `/alarms${qs({ state: params.state, deviceId: params.deviceId, limit: params.limit })}`,
     ),
 

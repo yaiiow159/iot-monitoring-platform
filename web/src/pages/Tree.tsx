@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
-import type { AlarmSeverity, NodeKind, TreeNode, TreePathNode } from '../api/types';
+import type { AlarmSeverity, CreateNodeRequest, NodeKind, TreeNode, TreePathNode } from '../api/types';
 import { AlarmTable } from '../components/AlarmTable';
 import { useAsync } from '../hooks/useAsync';
+import { can, useSession } from '../auth/session';
 import { useLive, useLiveDevices } from '../live/LiveContext';
 import { SEVERITY_LABEL, formatInt } from '../utils/format';
 
@@ -215,6 +216,22 @@ export function Tree() {
     }
   };
 
+  /** 新增節點後不在前端插入：重抓那一層讓順序由後端決定，跟上移／下移同一套做法 */
+  const afterCreate = useCallback(async (created: TreeNode, parentId: number | null) => {
+    if (parentId === null) {
+      setRoots(await api.getTree());
+    } else {
+      const subtree = await api.getSubtree(parentId);
+      setRoots((prev) => (prev ? replaceNode(prev, subtree) : prev));
+      setExpanded((prev) => withAll(prev, [parentId]));
+    }
+    setSelectedId(created.id);
+  }, []);
+
+  const session = useSession();
+  const canEdit = can(session?.user, 'operate');
+  const [showRootForm, setShowRootForm] = useState(false);
+
   const summary = useMemo(() => {
     const counts: Record<NodeKind, number> = { EQUIPMENT: 0, SENSOR: 0, DEVICE: 0 };
     let firing = 0;
@@ -252,8 +269,23 @@ export function Tree() {
               <button className="btn" disabled={!roots} onClick={() => setExpanded(new Set())}>
                 全部收合
               </button>
+              {canEdit && (
+                <button className="btn" onClick={() => setShowRootForm((v) => !v)}>
+                  {showRootForm ? '收起' : '＋ 新增設備'}
+                </button>
+              )}
             </div>
           </header>
+
+          {showRootForm && canEdit && (
+            <NodeForm
+              parent={null}
+              onCreated={(n) => {
+                setShowRootForm(false);
+                void afterCreate(n, null);
+              }}
+            />
+          )}
 
           <div className="legend">
             {KINDS.map((k) => (
@@ -305,6 +337,8 @@ export function Tree() {
           moveError={moveError}
           onMove={move}
           onSelect={setSelectedId}
+          canEdit={canEdit}
+          onCreated={afterCreate}
         />
       </div>
     </div>
@@ -420,9 +454,11 @@ interface DetailProps {
   moveError: string | null;
   onMove(dir: -1 | 1): void;
   onSelect(id: number): void;
+  canEdit: boolean;
+  onCreated(created: TreeNode, parentId: number | null): Promise<void>;
 }
 
-function NodeDetail({ node, roots, canMoveUp, canMoveDown, moving, moveError, onMove, onSelect }: DetailProps) {
+function NodeDetail({ node, roots, canMoveUp, canMoveDown, moving, moveError, onMove, onSelect, canEdit, onCreated }: DetailProps) {
   const nodeId = node?.id ?? null;
   const ancestors = useAsync(
     () => (nodeId === null ? Promise.resolve([] as TreePathNode[]) : api.getAncestors(nodeId)),
@@ -556,6 +592,7 @@ function NodeDetail({ node, roots, canMoveUp, canMoveDown, moving, moveError, on
             <span className="caption">直接子節點</span>
             <span className="sub">依後端回傳順序</span>
           </div>
+          {canEdit && <NodeForm parent={node} onCreated={(n) => onCreated(n, node.id)} />}
           {node.children.length === 0 ? (
             <p className="empty">尚無子節點</p>
           ) : (
@@ -599,5 +636,93 @@ function NodeDetail({ node, roots, canMoveUp, canMoveDown, moving, moveError, on
         </div>
       )}
     </section>
+  );
+}
+
+// ---------------------------------------------------------------- 新增節點
+
+/**
+ * 新增節點的表單。能選的類型由父節點決定，跟後端的嵌套規則同一份：
+ * 根層只能是 Equipment；Sensor 底下可以是 Sensor 或 Device；Device 不能有子節點。
+ * 選錯的話後端仍會拒絕，訊息原文顯示。
+ */
+function NodeForm({ parent, onCreated }: { parent: TreeNode | null; onCreated(created: TreeNode): void }) {
+  const allowed: NodeKind[] = parent === null ? ['EQUIPMENT'] : parent.kind === 'EQUIPMENT' ? ['SENSOR'] : ['SENSOR', 'DEVICE'];
+  const [kind, setKind] = useState<NodeKind>(allowed[0]);
+  const [name, setName] = useState('');
+  const [deviceId, setDeviceId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const effectiveKind = allowed.includes(kind) ? kind : allowed[0];
+  const isDevice = effectiveKind === 'DEVICE';
+  const canSubmit = !busy && (isDevice ? deviceId.trim() !== '' : name.trim() !== '');
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canSubmit) return;
+    setBusy(true);
+    setError(null);
+    const request: CreateNodeRequest = {
+      kind: effectiveKind,
+      // Device 節點的名字就用裝置代號，讓樹上的名字跟裝置頁對得起來
+      name: isDevice ? name.trim() || deviceId.trim().toUpperCase() : name.trim(),
+      parentId: parent?.id ?? null,
+      deviceId: isDevice ? deviceId.trim().toUpperCase() : undefined,
+    };
+    try {
+      const created = await api.createNode(request);
+      setName('');
+      setDeviceId('');
+      onCreated(created);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="form node-form" onSubmit={submit}>
+      <div className="field-row">
+        <label className="field">
+          <span>類型</span>
+          <select className="input" value={effectiveKind} onChange={(e) => setKind(e.target.value as NodeKind)} disabled={allowed.length === 1}>
+            {allowed.map((k) => (
+              <option key={k} value={k}>
+                {KIND_LABEL[k]}
+              </option>
+            ))}
+          </select>
+        </label>
+        {isDevice ? (
+          <label className="field">
+            <span>裝置代號</span>
+            <input className="input mono" value={deviceId} onChange={(e) => setDeviceId(e.target.value)} placeholder="DEV-000001" />
+          </label>
+        ) : null}
+        <label className="field">
+          <span>名稱{isDevice ? '（可空）' : ''}</span>
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={parent === null ? '例如：3F 配電盤' : '例如：進風側'} />
+        </label>
+        <button className="btn btn-primary node-form-submit" type="submit" disabled={!canSubmit}>
+          {busy ? '送出中…' : parent === null ? '新增設備' : `在「${parent.name}」下新增`}
+        </button>
+      </div>
+      <p className="hint">
+        {parent === null
+          ? 'Equipment 只能在根層。'
+          : parent.kind === 'EQUIPMENT'
+            ? 'Equipment 底下只能掛 Sensor；Device 要再往下一層。'
+            : 'Sensor 可以再掛 Sensor（無限嵌套）或 Device；Device 是最後一層。'}
+        排到同層最後；順序之後可用上移／下移調整。
+      </p>
+      {error && (
+        <p className="error" role="alert">
+          <span className="caption">後端拒絕</span>
+          {error}
+        </p>
+      )}
+    </form>
   );
 }

@@ -53,16 +53,21 @@ public class AuditFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         ContentCachingRequestWrapper req = new ContentCachingRequestWrapper(request);
         ContentCachingResponseWrapper res = new ContentCachingResponseWrapper(response);
+        Exception failure = null;
         try {
             chain.doFilter(req, res);
+        } catch (IOException | ServletException | RuntimeException e) {
+            // 例外往外拋時回應狀態還是 200（容器之後才轉送到 /error），這裡要自己記成 FAILED
+            failure = e;
+            throw e;
         } finally {
-            record(req, res);
+            record(req, res, failure);
             res.copyBodyToResponse();
         }
     }
 
-    private void record(ContentCachingRequestWrapper req, ContentCachingResponseWrapper res) {
-        int status = res.getStatus();
+    private void record(ContentCachingRequestWrapper req, ContentCachingResponseWrapper res, Exception failure) {
+        int status = failure != null ? 500 : res.getStatus();
         String path = req.getRequestURI();
         String[] segments = path.substring("/api/v1/".length()).split("/");
         String targetType = segments.length > 0 ? segments[0] : "unknown";
@@ -76,7 +81,13 @@ public class AuditFilter extends OncePerRequestFilter {
         if (!body.isBlank()) {
             detail.put("body", body.length() > MAX_BODY_CHARS ? body.substring(0, MAX_BODY_CHARS) + "…" : body);
         }
-        if (status >= 400) {
+        if (failure != null) {
+            Throwable root = failure;
+            while (root.getCause() != null) {
+                root = root.getCause();
+            }
+            detail.put("reply", root.getClass().getSimpleName() + ": " + root.getMessage());
+        } else if (status >= 400) {
             String reply = new String(res.getContentAsByteArray(), StandardCharsets.UTF_8);
             if (!reply.isBlank()) {
                 detail.put("reply", reply.length() > 500 ? reply.substring(0, 500) : reply);

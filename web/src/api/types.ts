@@ -20,10 +20,61 @@ export type CabinetType = 'POWER' | 'SERVER' | 'SENSOR';
 /** 與 iot-domain 的 Comparison 一致。OUT_OF_RANGE 需要 secondaryValue 當另一個邊界。 */
 export type Comparison = 'GT' | 'GTE' | 'LT' | 'LTE' | 'OUT_OF_RANGE';
 
+// ---------------------------------------------------------------- 登入與權限
+
+/** 與 iot-domain 的 Role 一致，刻意只有三種。 */
+export type Role = 'ADMIN' | 'OPERATOR' | 'VIEWER';
+
+export interface AuthUser {
+  username: string;
+  role: Role;
+  displayName: string;
+  expiresAt: string;
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface LoginResponse extends AuthUser {
+  token: string;
+}
+
+export interface AppUser {
+  id: number;
+  username: string;
+  role: Role;
+  displayName: string;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export interface CreateUserRequest {
+  username: string;
+  password: string;
+  role: Role;
+  displayName: string;
+}
+
+export type AuditOutcome = 'OK' | 'REJECTED' | 'DENIED' | 'FAILED';
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  actor: string;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  outcome: AuditOutcome;
+  detail: Record<string, unknown> | null;
+}
+
 // ---------------------------------------------------------------- 設定中心
 
 export interface MetricDefinition {
   key: string;
+  /** 無因次量（功率因數、門磁）是空字串。 */
   unit: string;
   minValue: number;
   maxValue: number;
@@ -37,7 +88,15 @@ export interface DeviceModel {
 }
 
 export interface Cabinet {
+  /** 就是機櫃代號（CAB-001），同時是 Device.cabinetId 的關聯鍵。 */
   id: string;
+  name: string;
+  type: CabinetType;
+  location: string;
+  slotCount: number;
+}
+
+export interface CreateCabinetRequest {
   name: string;
   type: CabinetType;
   location: string;
@@ -55,10 +114,20 @@ export interface Device {
   lastSeenAt: string | null;
 }
 
+export interface RegisterDeviceRequest {
+  deviceId: string;
+  name?: string;
+  modelCode: string;
+  cabinetId?: string;
+  slot?: number;
+}
+
+/** modelCode 與 deviceId 恰有一個非 null：綁機型的規則套用到整個機型，綁裝置的是例外。 */
 export interface AlarmRule {
   id: number;
   name: string;
-  modelCode: string;
+  modelCode: string | null;
+  deviceId?: string | null;
   metric: string;
   comparison: Comparison;
   threshold: number;
@@ -72,7 +141,8 @@ export interface AlarmRule {
 
 export interface CreateAlarmRuleRequest {
   name: string;
-  modelCode: string;
+  modelCode?: string | null;
+  deviceId?: string | null;
   metric: string;
   comparison: Comparison;
   threshold: number;
@@ -237,12 +307,18 @@ export interface LiveSocketHandlers {
 
 /** 前後端共用的 API 介面。client.ts 與 mock.ts 各實作一份。 */
 export interface IotApi {
+  login(request: LoginRequest): Promise<LoginResponse>;
+  listUsers(): Promise<AppUser[]>;
+  createUser(request: CreateUserRequest): Promise<AppUser>;
+  listAudit(params?: { limit?: number; actor?: string }): Promise<AuditEntry[]>;
   getOverview(): Promise<Overview>;
   listModels(): Promise<DeviceModel[]>;
-  createModel(model: Omit<DeviceModel, never>): Promise<DeviceModel>;
+  createModel(model: DeviceModel): Promise<DeviceModel>;
   listCabinets(): Promise<Cabinet[]>;
+  createCabinet(request: CreateCabinetRequest): Promise<Cabinet>;
   listDevices(query?: DeviceQuery): Promise<Device[]>;
   getDevice(deviceId: string): Promise<Device | null>;
+  registerDevice(request: RegisterDeviceRequest): Promise<Device>;
   listAlarms(params?: { state?: AlarmState; deviceId?: string; limit?: number }): Promise<Alarm[]>;
   listAlarmRules(): Promise<AlarmRule[]>;
   createAlarmRule(rule: CreateAlarmRuleRequest): Promise<AlarmRule>;

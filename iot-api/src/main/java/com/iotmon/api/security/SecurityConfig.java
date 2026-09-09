@@ -38,7 +38,8 @@ public class SecurityConfig {
         http.csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
-                        .requestMatchers("/api/v1/auth/login", "/actuator/**", "/ws/**",
+                        // /error 是容器的錯誤轉送目標：不放行的話，任何 500 都會變成 401，前端會誤判成登入過期
+                        .requestMatchers("/api/v1/auth/login", "/actuator/**", "/ws/**", "/error",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/audit/**", "/api/v1/users/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/**").authenticated()
