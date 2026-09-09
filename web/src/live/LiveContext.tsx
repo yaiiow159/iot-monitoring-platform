@@ -35,11 +35,15 @@ interface LiveSnapshot {
   statuses: Record<string, DeviceStatus>;
   alarms: LiveAlarmNotice[];
   subscribedCount: number;
+  /** 目前訂閱的監控樹節點數（後端會展開成子樹下的裝置，只推狀態與告警）。 */
+  subscribedNodeCount: number;
 }
 
 interface LiveContextValue extends LiveSnapshot {
   /** 由 useLiveDevices 呼叫；元件不要直接用。 */
   retain(deviceIds: string[]): () => void;
+  /** 由 useLiveNodes 呼叫；元件不要直接用。 */
+  retainNodes(nodeIds: number[]): () => void;
 }
 
 const LiveContext = createContext<LiveContextValue | null>(null);
@@ -54,6 +58,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     statuses: {},
     alarms: [],
     subscribedCount: 0,
+    subscribedNodeCount: 0,
   });
 
   const socketRef = useRef<LiveSocket | null>(null);
@@ -64,6 +69,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
    * 出現在機櫃格與告警列表裡，任一方卸載都不該把另一方的訂閱一起收走。
    */
   const refCounts = useRef(new Map<string, number>());
+  const nodeRefCounts = useRef(new Map<number, number>());
   const pendingResubscribe = useRef<number | null>(null);
 
   // 待寫入的推播暫存區，避免每則訊息都觸發一次 render。
@@ -80,10 +86,13 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     pendingResubscribe.current = window.setTimeout(() => {
       pendingResubscribe.current = null;
       const deviceIds = [...refCounts.current.keys()];
+      const nodeIds = [...nodeRefCounts.current.keys()];
       // 契約只定義 subscribe，因此每次都送完整集合，由伺服器以最後一次為準。
-      socketRef.current?.send({ action: 'subscribe', deviceIds });
+      socketRef.current?.send({ action: 'subscribe', deviceIds, nodeIds });
       setSnapshot((prev) =>
-        prev.subscribedCount === deviceIds.length ? prev : { ...prev, subscribedCount: deviceIds.length },
+        prev.subscribedCount === deviceIds.length && prev.subscribedNodeCount === nodeIds.length
+          ? prev
+          : { ...prev, subscribedCount: deviceIds.length, subscribedNodeCount: nodeIds.length },
       );
     }, 50);
   }, []);
@@ -112,12 +121,33 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     [resubscribe],
   );
 
+  const retainNodes = useCallback(
+    (nodeIds: number[]) => {
+      const counts = nodeRefCounts.current;
+      for (const id of nodeIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+      resubscribe();
+      return () => {
+        for (const id of nodeIds) {
+          const next = (counts.get(id) ?? 1) - 1;
+          if (next <= 0) counts.delete(id);
+          else counts.set(id, next);
+        }
+        resubscribe();
+      };
+    },
+    [resubscribe],
+  );
+
   useEffect(() => {
     const socket = api.connectLive({
       onOpen() {
         setSnapshot((prev) => ({ ...prev, connection: 'open' }));
         // 重連後把目前可見的集合重送一次，訂閱狀態不必自己記在別處。
-        socket.send({ action: 'subscribe', deviceIds: [...refCounts.current.keys()] });
+        socket.send({
+          action: 'subscribe',
+          deviceIds: [...refCounts.current.keys()],
+          nodeIds: [...nodeRefCounts.current.keys()],
+        });
       },
       onClose() {
         setSnapshot((prev) => ({ ...prev, connection: 'connecting' }));
@@ -167,7 +197,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const value = useMemo<LiveContextValue>(() => ({ ...snapshot, retain }), [snapshot, retain]);
+  const value = useMemo<LiveContextValue>(() => ({ ...snapshot, retain, retainNodes }), [snapshot, retain, retainNodes]);
 
   return <LiveContext.Provider value={value}>{children}</LiveContext.Provider>;
 }
@@ -190,4 +220,18 @@ export function useLiveDevices(deviceIds: string[]): void {
     if (!key) return;
     return retain(key.split(','));
   }, [key, retain]);
+}
+
+/**
+ * 宣告「這個畫面正在看這些監控樹節點」。後端會把節點展開成子樹下的裝置，
+ * 只推狀態與告警——樹要的是「哪裡在響」，不是每台裝置每秒的讀數。
+ * 一萬台裝置的樹只需要送幾個根節點 id，瀏覽器與伺服器之間不必來回一萬筆裝置代號。
+ */
+export function useLiveNodes(nodeIds: number[]): void {
+  const { retainNodes } = useLive();
+  const key = nodeIds.join(',');
+  useEffect(() => {
+    if (!key) return;
+    return retainNodes(key.split(',').map(Number));
+  }, [key, retainNodes]);
 }

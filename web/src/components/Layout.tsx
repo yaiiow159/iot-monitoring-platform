@@ -14,7 +14,7 @@ const CONNECTION_TEXT = {
 const navClass = ({ isActive }: { isActive: boolean }) => (isActive ? 'nav-item active' : 'nav-item');
 
 export function Layout() {
-  const { connection, subscribedCount } = useLive();
+  const { connection, subscribedCount, subscribedNodeCount } = useLive();
   const session = useSession();
   const navigate = useNavigate();
 
@@ -54,8 +54,8 @@ export function Layout() {
         <div className="topbar-right">
           <Clock />
           {USE_MOCK && <span className="badge badge-mock">MOCK</span>}
-          <span className="sub num" title="只訂閱目前畫面上看得到的裝置">
-            訂閱 {formatInt(subscribedCount)} 台
+          <span className="sub num" title="只訂閱目前畫面上看得到的裝置；監控樹按節點訂閱，只收告警與狀態">
+            訂閱 {formatInt(subscribedCount)} 台{subscribedNodeCount > 0 ? `・${formatInt(subscribedNodeCount)} 節點` : ''}
           </span>
           <span className={`conn conn-${connection}`}>
             <span className="conn-dot" />

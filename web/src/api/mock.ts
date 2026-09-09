@@ -675,6 +675,8 @@ function materialize(node: FlatNode, firingByDevice: Map<string, AlarmSeverity[]
  */
 class MockLiveSocket implements LiveSocket {
   private subscribed: string[] = [];
+  /** 由節點訂閱展開的裝置：只推狀態與告警，不推遙測，與真實後端一致 */
+  private nodeDevices: string[] = [];
   private timer: number | null = null;
   private closed = false;
   private ticks = 0;
@@ -690,7 +692,7 @@ class MockLiveSocket implements LiveSocket {
 
   private tick(): void {
     const ids = this.subscribed;
-    if (ids.length === 0) return;
+    if (ids.length === 0 && this.nodeDevices.length === 0) return;
     this.ticks++;
 
     // 一秒最多推 400 台，模擬後端的推播上限，也避免 mock 自己把瀏覽器拖垮。
@@ -728,7 +730,8 @@ class MockLiveSocket implements LiveSocket {
     // 讓告警從葉節點一路亮到根的上浮效果看得到，不必等隨機命中。
     if (this.ticks % 12 === 0) {
       const firing = firingIndex();
-      const quiet = ids.filter((id) => {
+      const treeIds = [...new Set([...ids, ...this.nodeDevices])];
+      const quiet = treeIds.filter((id) => {
         const node = nodeByDeviceId.get(id);
         if (!node) return false;
         return !descendantIds(pathTo(node.id)[0].id).some((nid) => {
@@ -736,7 +739,7 @@ class MockLiveSocket implements LiveSocket {
           return d !== undefined && firing.has(d);
         });
       });
-      const pool = quiet.length > 0 ? quiet : ids.filter((id) => nodeByDeviceId.has(id));
+      const pool = quiet.length > 0 ? quiet : treeIds.filter((id) => nodeByDeviceId.has(id));
       if (pool.length > 0) {
         const device = deviceById.get(pool[Math.floor(Math.random() * pool.length)]);
         if (device) this.fireAlarm(device, Math.random() < 0.5 ? 'CRITICAL' : 'WARNING', now);
@@ -760,6 +763,14 @@ class MockLiveSocket implements LiveSocket {
 
   send(message: SubscribeMessage): void {
     this.subscribed = message.deviceIds;
+    const ids = new Set<string>();
+    for (const nodeId of message.nodeIds ?? []) {
+      for (const nid of descendantIds(nodeId)) {
+        const d = treeNodes.find((n) => n.id === nid)?.deviceId;
+        if (d) ids.add(d);
+      }
+    }
+    this.nodeDevices = [...ids];
   }
 
   close(): void {

@@ -5,7 +5,7 @@ import type { AlarmSeverity, CreateNodeRequest, NodeKind, TreeNode, TreePathNode
 import { AlarmTable } from '../components/AlarmTable';
 import { useAsync } from '../hooks/useAsync';
 import { can, useSession } from '../auth/session';
-import { useLive, useLiveDevices } from '../live/LiveContext';
+import { useLive, useLiveNodes } from '../live/LiveContext';
 import { SEVERITY_LABEL, formatInt } from '../utils/format';
 
 /*
@@ -103,14 +103,10 @@ export function Tree() {
     setExpanded(defaultExpanded(tree.data));
   }, [tree.data]);
 
-  // 樹上所有裝置都訂閱：收合的分支也要收得到告警，rollup 才會往上亮。
-  // 目前樹只有數十台；樹真的長到一萬台時要請後端提供「按節點訂閱」的推播。
-  const deviceIds = useMemo(() => {
-    const ids: string[] = [];
-    if (roots) walk(roots, (n) => n.deviceId && ids.push(n.deviceId));
-    return ids;
-  }, [roots]);
-  useLiveDevices(deviceIds);
+  // 按節點訂閱：只送根節點 id，後端展開成子樹下的裝置，只推狀態與告警。
+  // 收合的分支也收得到告警（rollup 才會往上亮），而瀏覽器不必承受一萬台裝置的遙測。
+  const rootIds = useMemo(() => (roots ?? []).map((r) => r.id), [roots]);
+  useLiveNodes(rootIds);
 
   /**
    * 告警上浮的核心：不是只改葉節點，而是把整條祖先鏈標成「需重抓」，

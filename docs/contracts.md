@@ -130,7 +130,12 @@ GET /telemetry?deviceId=DEV-000123&metric=temperature&from=...&to=...&maxPoints=
 不訂閱就什麼都不推——一萬台裝置的更新全推給每個瀏覽器會直接打爆前端。
 
 ```json
-{ "action": "subscribe", "deviceIds": ["DEV-000123", "DEV-000124"] }
+{ "action": "subscribe", "deviceIds": ["DEV-000123", "DEV-000124"], "nodeIds": [1, 7] }
+
+- `deviceIds`：直接訂閱的裝置，三種訊息都推，單一連線上限 2000 台。
+- `nodeIds`（按節點訂閱）：監控樹的節點 id，後端用 ltree 展開成子樹下的裝置，**只推 status 與 alarm、不推 telemetry**。
+  樹要的是「哪裡在響」，不是每台裝置每秒的讀數；一萬台裝置的樹只需送幾個根節點 id。上限 500 個節點。
+- 回覆 `{"type":"subscribed","count":N,"nodeCount":M,"nodeDeviceCount":K}`。
 ```
 
 伺服器推播：

@@ -3,6 +3,7 @@ package com.iotmon.api.ws;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.iotmon.infrastructure.live.LiveSessionRegistry;
+import com.iotmon.infrastructure.persistence.MonitoringTreeRepository;
 import com.iotmon.infrastructure.live.LiveSubscriber;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +14,9 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -30,11 +33,16 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
     /** 單一連線的訂閱上限：擋下「訂閱全部一萬台」這種會把自己打爆的請求 */
     private static final int MAX_SUBSCRIPTIONS = 2000;
 
+    /** 節點訂閱上限：一棵樹的根節點以十計，五百已經是「把整個廠區都攤開」的量 */
+    private static final int MAX_NODE_SUBSCRIPTIONS = 500;
+
     private final LiveSessionRegistry registry;
+    private final MonitoringTreeRepository tree;
     private final ObjectMapper json;
 
-    public LiveWebSocketHandler(LiveSessionRegistry registry, ObjectMapper json) {
+    public LiveWebSocketHandler(LiveSessionRegistry registry, MonitoringTreeRepository tree, ObjectMapper json) {
         this.registry = registry;
+        this.tree = tree;
         this.json = json;
     }
 
@@ -60,8 +68,22 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
                     + MAX_SUBSCRIPTIONS + " 台裝置\"}"));
             return;
         }
-        registry.subscribe(session.getId(), deviceIds);
-        session.sendMessage(new TextMessage("{\"type\":\"subscribed\",\"count\":" + deviceIds.size() + "}"));
+        // 節點訂閱：前端只送節點 id，這裡用 ltree 展開成子樹下的裝置；這一組只收狀態與告警
+        List<Long> nodeIds = new ArrayList<>();
+        for (JsonNode id : root.path("nodeIds")) {
+            if (id.canConvertToLong()) {
+                nodeIds.add(id.asLong());
+            }
+        }
+        if (nodeIds.size() > MAX_NODE_SUBSCRIPTIONS) {
+            session.sendMessage(new TextMessage("{\"type\":\"error\",\"message\":\"單一連線最多訂閱 "
+                    + MAX_NODE_SUBSCRIPTIONS + " 個節點\"}"));
+            return;
+        }
+        Set<String> nodeDevices = tree.findDeviceIdsUnder(nodeIds);
+        registry.subscribe(session.getId(), deviceIds, nodeDevices);
+        session.sendMessage(new TextMessage("{\"type\":\"subscribed\",\"count\":" + deviceIds.size()
+                + ",\"nodeCount\":" + nodeIds.size() + ",\"nodeDeviceCount\":" + nodeDevices.size() + "}"));
     }
 
     @Override

@@ -343,10 +343,14 @@ export interface LiveAlarmEvent {
 
 export type LiveEvent = LiveTelemetryEvent | LiveStatusEvent | LiveAlarmEvent;
 
-/** 契約只定義 subscribe 一種動作，所以前端每次都送「目前可見裝置的完整集合」。 */
+/**
+ * 契約只定義 subscribe 一種動作，所以前端每次都送「目前可見裝置的完整集合」。
+ * nodeIds 是監控樹用的：只送節點 id，後端展開成子樹下的裝置，而且只推狀態與告警、不推遙測。
+ */
 export interface SubscribeMessage {
   action: 'subscribe';
   deviceIds: string[];
+  nodeIds?: number[];
 }
 
 /**

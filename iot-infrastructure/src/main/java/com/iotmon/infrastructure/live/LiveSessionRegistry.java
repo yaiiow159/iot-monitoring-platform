@@ -34,8 +34,14 @@ public class LiveSessionRegistry {
     private static final Logger log = LoggerFactory.getLogger(LiveSessionRegistry.class);
 
     private final Map<String, LiveSubscriber> subscribers = new ConcurrentHashMap<>();
-    /** subscriber id → 已訂閱的 deviceId 集合 */
+    /** subscriber id → 已訂閱的 deviceId 集合（收全部三種訊息） */
     private final Map<String, Set<String>> subscriptions = new ConcurrentHashMap<>();
+    /**
+     * subscriber id → 由節點訂閱展開出來的 deviceId 集合。
+     * 這一組只收狀態與告警、不收遙測：監控樹要的是「哪裡在響」，不是每台裝置每秒的讀數。
+     * 一萬台裝置的樹若連遙測都推，瀏覽器每秒要吃一萬則訊息。
+     */
+    private final Map<String, Set<String>> nodeSubscriptions = new ConcurrentHashMap<>();
     private final ObjectMapper json;
     private final Counter pushed;
     private final Counter dropped;
@@ -51,21 +57,34 @@ public class LiveSessionRegistry {
     public void register(LiveSubscriber subscriber) {
         subscribers.put(subscriber.id(), subscriber);
         subscriptions.put(subscriber.id(), ConcurrentHashMap.newKeySet());
+        nodeSubscriptions.put(subscriber.id(), ConcurrentHashMap.newKeySet());
     }
 
     public void unregister(String subscriberId) {
         subscribers.remove(subscriberId);
         subscriptions.remove(subscriberId);
+        nodeSubscriptions.remove(subscriberId);
     }
 
     /** 訂閱是「整組取代」而不是累加：前端每次送的是目前畫面上看得到的完整集合。 */
     public void subscribe(String subscriberId, Set<String> deviceIds) {
+        subscribe(subscriberId, deviceIds, Set.of());
+    }
+
+    /**
+     * @param deviceIds     直接訂閱的裝置：三種訊息都推
+     * @param nodeDeviceIds 由節點展開的裝置：只推狀態與告警
+     */
+    public void subscribe(String subscriberId, Set<String> deviceIds, Set<String> nodeDeviceIds) {
         Set<String> current = subscriptions.get(subscriberId);
-        if (current == null) {
+        Set<String> nodes = nodeSubscriptions.get(subscriberId);
+        if (current == null || nodes == null) {
             return;
         }
         current.clear();
         current.addAll(deviceIds);
+        nodes.clear();
+        nodes.addAll(nodeDeviceIds);
     }
 
     /** 推給所有訂閱了這台裝置的連線 */
@@ -78,8 +97,14 @@ public class LiveSessionRegistry {
             return;
         }
 
+        boolean telemetry = message instanceof LiveMessage.Telemetry;
         for (Map.Entry<String, Set<String>> entry : subscriptions.entrySet()) {
-            if (!entry.getValue().contains(message.deviceId())) {
+            boolean wanted = entry.getValue().contains(message.deviceId());
+            if (!wanted && !telemetry) {
+                Set<String> viaNodes = nodeSubscriptions.get(entry.getKey());
+                wanted = viaNodes != null && viaNodes.contains(message.deviceId());
+            }
+            if (!wanted) {
                 continue;
             }
             LiveSubscriber subscriber = subscribers.get(entry.getKey());
@@ -103,6 +128,11 @@ public class LiveSessionRegistry {
 
     public int subscriptionCount(String subscriberId) {
         Set<String> set = subscriptions.get(subscriberId);
+        return set == null ? 0 : set.size();
+    }
+
+    public int nodeSubscriptionCount(String subscriberId) {
+        Set<String> set = nodeSubscriptions.get(subscriberId);
         return set == null ? 0 : set.size();
     }
 }

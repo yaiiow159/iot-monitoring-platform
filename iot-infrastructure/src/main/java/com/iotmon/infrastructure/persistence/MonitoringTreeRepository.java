@@ -12,7 +12,9 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.Optional;
 
@@ -85,6 +87,28 @@ public class MonitoringTreeRepository {
                 WHERE a.path @> leaf.path
                 ORDER BY nlevel(a.path)
                 """, (rs, i) -> rs.getLong("id"), deviceRowId);
+    }
+
+    /**
+     * 這些節點的子樹底下所有裝置的代號。按節點訂閱推播時用：前端只送根節點 id，
+     * 展開成裝置集合是後端的事——一萬台裝置的 id 清單不該在瀏覽器與伺服器之間來回。
+     */
+    public Set<String> findDeviceIdsUnder(Collection<Long> nodeIds) {
+        if (nodeIds == null || nodeIds.isEmpty()) {
+            return Set.of();
+        }
+        String placeholders = String.join(",", java.util.Collections.nCopies(nodeIds.size(), "?"));
+        Set<String> result = new java.util.HashSet<>();
+        jdbc.query("""
+                SELECT DISTINCT d.device_id
+                FROM monitoring_node n
+                JOIN monitoring_node leaf ON leaf.path <@ n.path AND leaf.device_id IS NOT NULL
+                JOIN device d ON d.id = leaf.device_id
+                WHERE n.id IN (%s)
+                """.formatted(placeholders), (java.sql.ResultSet rs) -> {
+            result.add(rs.getString(1));
+        }, nodeIds.toArray());
+        return result;
     }
 
     public Optional<TreeNode> findById(long nodeId) {
