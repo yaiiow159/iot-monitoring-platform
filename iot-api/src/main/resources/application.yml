@@ -3,7 +3,9 @@ spring:
     name: iot-monitoring
 
   datasource:
-    url: jdbc:postgresql://localhost:5433/iotmon
+    # reWriteBatchedInserts：沒開的話 batchUpdate 仍是每列一次往返，五千列的批次要兩秒；
+    # 開了驅動會改寫成多列 INSERT，同一批只要幾十毫秒（實測見 performance.md）
+    url: jdbc:postgresql://localhost:5433/iotmon?reWriteBatchedInserts=true
     username: iotmon
     password: iotmon
     hikari:
@@ -44,6 +46,8 @@ spring:
     listener:
       type: batch
       ack-mode: manual_immediate
+      # 12 個分區、4 條消費執行緒：每條執行緒各自批次寫入，彼此不共用連線
+      concurrency: 4
 
 # 8080 常被其他本機服務佔用（作者機器上是另一個專案），改用 8090
 server:
@@ -72,9 +76,11 @@ iot:
     host: localhost
     port: 1883
     client-id: iot-bridge
-    # 橋接端訂閱所有機型與裝置的遙測
+    # 橋接端訂閱所有機型與裝置的遙測；實際訂閱時會加上 $share/iot-bridge/ 前綴做共享訂閱
     telemetry-topic: "iot/telemetry/+/+"
     status-topic: "iot/status/+"
+    # 幾條連線分攤 broker 的派送。單一連線在每秒一萬則時會被 keepalive 逾時踢掉（見 MqttBridge）
+    bridge-connections: 8
   ingest:
     # 批次大小與逾時的取捨：批次越大吞吐越好，但資料進到查詢端的延遲也越高。
     # 400 筆 / 200ms 讓即時儀表板的延遲維持在人眼無感的範圍。

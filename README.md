@@ -63,7 +63,7 @@
 50,000 點/秒 × 86,400 秒 × 730 天 = 3.15 兆筆
 ```
 
-TimescaleDB 的欄式壓縮實測是每筆 **8.61 位元組**（100 萬筆實測，壓縮比 10.4 倍，
+TimescaleDB 的欄式壓縮實測是每筆 **8.61 位元組**（100 萬筆實測，壓縮比 10.4 倍；4,570 萬筆時 10.25 位元組，
 見 [performance.md](docs/performance.md)），3.15 兆筆仍然是 **25 TB**。
 所以平台採三層降採樣，每層各自負責一段時間跨度：
 
@@ -189,6 +189,10 @@ java -jar iot-simulator/target/iot-simulator.jar --simulator.device-count=1000
 見 [docs/performance.md](docs/performance.md)。所有數字都標明量測條件；
 單機跑不出來的部分會明確說是推估值，不會混充實測。
 
+一萬台裝置的滿載實測在同一份文件：**這台開發機的上限是每秒 1.25 萬則、3.75 萬點**，端到端 p95 0.3 秒、Kafka 落後 0，
+再往上是 broker 與主機 CPU 到頂而不是平台程式碼。第一次跑時入庫只有發送量的五分之一，
+原因、怎麼找到的、修了什麼都寫在裡面——那一段比數字本身更值得看。
+
 指標與 Grafana 儀表板見 [docs/observability.md](docs/observability.md)：
 `docker compose up` 後 `localhost:3002` 就有五列面板，由上到下對應遙測從裝置到畫面的路徑。
 
@@ -204,3 +208,4 @@ java -jar iot-simulator/target/iot-simulator.jar --simulator.device-count=1000
 | [0004](docs/adr/0004-lwt-over-heartbeat-timeout.md) | 用 LWT 而非心跳逾時偵測斷線 |
 | [0005](docs/adr/0005-tree-ltree-and-rollup-by-recompute.md) | 監控樹用 ltree 存路徑，告警上浮用子樹重算而非計數器 |
 | [0006](docs/adr/0006-device-rule-overrides-model-rule-by-metric.md) | 裝置規則以指標為單位取代機型規則 |
+| [0007](docs/adr/0007-bridge-shared-subscription.md) | MQTT 橋接用多條連線共享訂閱，回呼離開事件迴圈 |

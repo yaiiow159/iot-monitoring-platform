@@ -10,6 +10,7 @@ Grafana（`localhost:3002`，匿名可看）以檔案佈建資料來源與儀表
 | 想知道 | 指標 | 為什麼是它 |
 |---|---|---|
 | 消費端跟不跟得上 | `telemetry_ingest_latency_seconds{quantile="0.95"}` | lag 是積壓的訊息數，延遲才是使用者感受得到的秒數。超過 1s 就是跟不上 |
+| 訊息有沒有到 Kafka | `rate(mqtt_bridge_forwarded_total)` 對比模擬器的 `simulator_messages_published_total` | 滿載實測時 Kafka 落後是 0、入庫卻只有五分之一——因為訊息在 broker 就被丟了。只看 lag 會被騙 |
 | 哪個消費群組慢 | `kafka_consumer_fetch_manager_records_lag_max` by `client_id` | 三個群組獨立（ADR-0003），寫入端落後是資料缺口風險，推播端落後只影響畫面 |
 | 批次有沒有發揮作用 | `telemetry_ingest_batch_size` 平均 vs `telemetry_write_batch_seconds` p95 | 批次太小＝往返太多；耗時漲但批次沒漲＝資料庫本身變慢 |
 | 查詢端有沒有被寫入端餓死 | `hikaricp_connections_pending` | 持續 > 0 就是前兆，連線池上限在 application.yml 有解釋 |
@@ -26,6 +27,8 @@ Grafana（`localhost:3002`，匿名可看）以檔案佈建資料來源與儀表
 | `telemetry.ingest.batch.size` | summary | 同上 |
 | `telemetry.write.batch` | timer | `TimescaleTelemetryWriter` |
 | `mqtt.bridge.forwarded` / `mqtt.bridge.malformed` | counter | `MqttBridge` |
+| `mqtt.bridge.connections` | gauge | 同上；應恆等於設定值，掉下來就是 broker 在踢人 |
+| `device.liveness.online` / `device.liveness.offline` | counter | `DeviceLiveness`，因遙測翻成在線／因沉默翻成離線的裝置數 |
 | `alarm.fired` / `alarm.resolved` | counter | `AlarmEngineConsumer` |
 | `alarm.evaluator.tracked` | gauge | 同上 |
 | `live.sessions` | gauge | `LiveSessionRegistry` |

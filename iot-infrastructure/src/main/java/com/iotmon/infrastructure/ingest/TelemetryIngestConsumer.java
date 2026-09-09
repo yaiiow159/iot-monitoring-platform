@@ -37,13 +37,15 @@ public class TelemetryIngestConsumer {
     private static final Logger log = LoggerFactory.getLogger(TelemetryIngestConsumer.class);
 
     private final TelemetryWriter writer;
+    private final DeviceLiveness liveness;
     private final Counter ingested;
     private final Counter rejected;
     private final Timer endToEndLatency;
     private final DistributionSummary batchSize;
 
-    public TelemetryIngestConsumer(TelemetryWriter writer, MeterRegistry registry) {
+    public TelemetryIngestConsumer(TelemetryWriter writer, DeviceLiveness liveness, MeterRegistry registry) {
         this.writer = writer;
+        this.liveness = liveness;
         this.ingested = Counter.builder("telemetry.ingested")
                 .description("成功寫入的資料點數").register(registry);
         this.rejected = Counter.builder("telemetry.rejected")
@@ -106,6 +108,10 @@ public class TelemetryIngestConsumer {
             return;
         }
         Instant timestamp = Instant.ofEpochMilli(envelope.ts());
+        // 有遙測就是在線：記在記憶體，由 DeviceLiveness 整批寫回
+        if (envelope.deviceId() != null) {
+            liveness.seen(envelope.deviceId(), envelope.ts());
+        }
 
         for (Map.Entry<String, Double> entry : envelope.metrics().entrySet()) {
             Double value = entry.getValue();

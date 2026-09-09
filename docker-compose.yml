@@ -47,6 +47,14 @@ services:
       # 一萬台裝置各持一條長連線，預設上限擋得住但沒有餘裕
       EMQX_LISTENERS__TCP__DEFAULT__MAX_CONNECTIONS: "50000"
       EMQX_DASHBOARD__DEFAULT_PASSWORD: "iotmon2026"
+      # 橋接端一條連線要吞每秒數千則：預設 32 則 inflight、1000 則佇列在這個量級下會持續丟訊息
+      EMQX_MQTT__MAX_INFLIGHT: "1000"
+      # 佇列上限故意不放大：超載時遙測寧可丟（ADR-0003 允許）也不要堆成三分鐘前的舊資料
+      EMQX_MQTT__MAX_MQUEUE_LEN: "10000"
+      # 共享訂閱把每秒數千則塞進橋接連線的程序信箱；預設 1000 則就強制關閉連線，
+      # 表現為「Server closed connection without DISCONNECT」每秒一次（實測 763 次／10 分鐘）
+      EMQX_FORCE_SHUTDOWN__MAX_MAILBOX_SIZE: "200000"
+      EMQX_FORCE_SHUTDOWN__MAX_HEAP_SIZE: "512MB"
     ports:
       - "1883:1883"   # MQTT
       - "8083:8083"   # MQTT over WebSocket
