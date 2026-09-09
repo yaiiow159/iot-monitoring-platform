@@ -5,15 +5,10 @@ import com.iotmon.domain.alarm.AlarmSeverity;
 import java.util.Optional;
 
 /**
- * 一個節點「自己加整個子樹」的告警彙總。
- *
- * <p>這是「父元素感知子節點告警」的資料形狀。它一定是**從子樹重新算出來的值**，
- * 不是靠事件遞增遞減維護的計數器。計數器版本有一個經典的錯：
- * 解除一則告警時把父節點減一，但兄弟節點還在響，父節點卻已經變綠——
- * 而且這個錯不會拋例外，只會在儀表板上安靜地顯示一個錯誤的顏色。
- *
- * @param severity 子樹內未解除告警的最高嚴重度；沒有告警時為 empty
- * @param firing   子樹內未解除告警的數量
+ * 一個節點「自己加整個子樹」的告警彙總。一定是從子樹重算的值，不是遞增遞減的計數器：
+ * 計數器版本解除一則時把父節點減一，兄弟還在響父節點卻變綠，而且不會拋例外。
+ * @param severity 子樹內未解除告警的最高嚴重度；沒有時為 empty
+ * @param firing 子樹內未解除告警的數量
  */
 public record Rollup(Optional<AlarmSeverity> severity, int firing) {
 

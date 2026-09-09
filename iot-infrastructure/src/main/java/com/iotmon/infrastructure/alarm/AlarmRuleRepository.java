@@ -7,6 +7,9 @@ import com.iotmon.domain.alarm.Comparison;
 import com.iotmon.domain.device.DeviceId;
 import com.iotmon.domain.model.MetricKey;
 import com.iotmon.domain.model.ModelCode;
+import com.iotmon.infrastructure.persistence.Rows;
+import com.iotmon.infrastructure.persistence.Rows;
+import com.iotmon.infrastructure.persistence.Rows;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -20,13 +23,8 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 告警規則的讀取，附一份會過期的快取。
- *
- * <p>規則每秒被查五萬次、每天被改幾次。不快取等於把資料庫當成規則引擎用；
- * 永不過期的快取則會讓「我改了門檻怎麼沒生效」變成客服問題。
- * 30 秒是折衷：改完最多半分鐘生效，而資料庫每 30 秒只多一次查詢。
- *
- * <p>機型規則與裝置規則一起載入；衝突時的優先序在 {@link AlarmRulePrecedence}，這裡只負責取資料。
+ * 告警規則的讀取，附 30 秒 TTL 的快取：規則每秒被查數萬次、每天被改幾次，不快取等於把資料庫當規則引擎；
+ * 永不過期又會讓「改了門檻怎麼沒生效」變成客服問題。優先序在 {@link AlarmRulePrecedence}。
  */
 @Repository
 public class AlarmRuleRepository {
@@ -84,8 +82,7 @@ public class AlarmRuleRepository {
     }
 
     private static AlarmRule mapRule(ResultSet rs) throws SQLException {
-        double secondaryRaw = rs.getDouble("secondary_value");
-        Double secondary = rs.wasNull() ? null : secondaryRaw;
+        Double secondary = Rows.nullableDouble(rs, "secondary_value");
         String modelCode = rs.getString("model_code");
         String deviceCode = rs.getString("device_code");
         long id = rs.getLong("id");

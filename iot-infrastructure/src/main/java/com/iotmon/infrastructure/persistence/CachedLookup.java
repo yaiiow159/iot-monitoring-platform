@@ -6,18 +6,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
- * Cache-aside 查找：先看記憶體，沒有才問來源，並記住「來源也沒有」的結果。
- *
- * <p>MetricDictionary 與 DeviceIdResolver 原本各自維護一份 ConcurrentHashMap、
- * 一份 miss 快取與一套 warmUp／invalidate。兩份程式碼一模一樣，
- * 差別只在查詢的 SQL。這種重複最危險的地方在於**修一邊忘了另一邊**——
- * 例如 miss 快取的失效邏輯，只補其中一個的話另一個就會永遠記住錯誤答案。
- *
- * <p>負向快取（記住「查不到」）是必要的：每秒五萬筆遙測裡若有一個打錯字的
- * deviceId，不記住就等於每秒打資料庫五萬次去確認它還是不存在。
- *
- * @param <K> 查找鍵
- * @param <V> 查找結果
+ * Cache-aside 查找，並記住「來源也沒有」的結果。MetricDictionary 與 DeviceIdResolver 原本各自維護一份，
+ * 修一邊忘了另一邊就是事故。負向快取是必要的：一個打錯字的 deviceId 不記住就等於每秒打資料庫數萬次。
  */
 public final class CachedLookup<K, V> {
 

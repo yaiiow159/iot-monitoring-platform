@@ -3,16 +3,10 @@ package com.iotmon.domain.model;
 import com.iotmon.domain.shared.Guard;
 
 /**
- * 一個指標在某個機型上的定義：單位與物理量程。
- *
- * <p>量程的用途不是「限制使用者輸入」，而是**分辨故障與異常**。
- * 溫度感測器回報 200°C 不代表機房失火，多半代表感測器壞了或線路斷路；
- * 這兩件事要觸發的告警完全不同。沒有量程就只能把兩者混為一談。
- *
- * @param key       指標代號
- * @param unit      單位，僅供顯示，不參與運算
- * @param minValue  量程下限（含）
- * @param maxValue  量程上限（含）
+ * 一個指標在某個機型上的定義。量程不是限制輸入，而是分辨「感測器壞了」與「機房失火」——兩者要觸發的告警不同。
+ * @param unit 僅供顯示，無因次量為空字串
+ * @param minValue 量程下限（含）
+ * @param maxValue 量程上限（含）
  */
 public record MetricDefinition(MetricKey key, String unit, double minValue, double maxValue) {
 

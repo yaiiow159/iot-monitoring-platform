@@ -14,19 +14,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 記錄每條連線訂閱了哪些裝置，並負責推播。
- *
- * <p>兩個設計重點：
- *
- * <ul>
- *   <li><b>沒訂閱就什麼都不推。</b>一萬台裝置的更新全推給每個瀏覽器會直接打爆前端，
- *       這是契約明訂的。</li>
- *   <li><b>慢的連線直接斷掉。</b>推播在 Kafka 消費端的執行緒上進行，
- *       一條卡住的連線若讓 send 阻塞，整個消費群組都跟著停。
- *       送不出去就關掉它，讓前端自己重連——這比讓所有人一起變慢好。</li>
- * </ul>
- *
- * <p>只依賴 {@link LiveSubscriber}，不認得 WebSocket；傳輸層的細節在 iot-api。
+ * 每條連線訂閱了哪些裝置，以及推播本身。沒訂閱就不推（一萬台全推會打爆前端）；
+ * 送不出去的連線直接斷掉，否則一條卡住的連線會讓整個消費群組跟著停。
+ * 只依賴 LiveSubscriber，不認得 WebSocket。
  */
 @Component
 public class LiveSessionRegistry {

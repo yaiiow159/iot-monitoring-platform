@@ -8,16 +8,8 @@ import org.springframework.stereotype.Component;
 import java.util.Optional;
 
 /**
- * 裝置字串識別碼 → 資料庫數值主鍵。
- *
- * <p>與 {@link MetricDictionary} 同樣的理由：時序表每列存 INTEGER 而不是
- * 64 位元組的字串。差別在於**這裡不會自動建立**——
- * 未註冊的裝置送來的遙測要被丟棄，不是默默幫它建一筆。
- *
- * <p>自動建立看起來方便，但它會讓「打錯字的 deviceId」變成一台幽靈裝置，
- * 而且沒有機型、沒有機櫃、不會有人發現。設定中心是唯一的註冊入口。
- * 「查不到」的結果由 {@link CachedLookup} 記住，否則同一個打錯字的 id
- * 會每秒打資料庫五萬次。
+ * 裝置字串識別碼 → 資料庫主鍵。與 {@link MetricDictionary} 的差別是這裡不自動建立：
+ * 未註冊的裝置要被丟棄，否則打錯字的 deviceId 會變成一台沒有機型也沒有機櫃的幽靈裝置。
  */
 @Component
 public class DeviceIdResolver {

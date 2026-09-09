@@ -1,13 +1,8 @@
 package com.iotmon.domain.shared;
 
 /**
- * 領域層的前置條件檢查。
- *
- * <p>抽出來的理由不是少打幾個字，而是**錯誤訊息的一致性**：六個聚合根各自寫
- * {@code if (x == null || x.isBlank()) throw ...}，訊息措辭遲早會分歧，
- * 而前端是拿這些訊息直接顯示給使用者的。
- *
- * <p>每個方法都回傳被檢查的值，讓呼叫端能寫成 {@code this.name = Guard.notBlank(name, "名稱")}。
+ * 領域層的前置條件檢查。抽出來是為了錯誤訊息一致：前端會直接把這些訊息顯示給使用者。
+ * 每個方法都回傳被檢查的值，可寫成 {@code this.name = Guard.notBlank(name, "名稱")}。
  */
 public final class Guard {
 

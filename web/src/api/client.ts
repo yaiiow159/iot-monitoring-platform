@@ -44,7 +44,7 @@ export class ApiError extends Error {
 }
 
 /** 後端的錯誤一律是 {"message": "..."}；解不出來就用原文，總比只給狀態碼好。 */
-function messageOf(text: string, fallback: string): string {
+export function messageOf(text: string, fallback: string): string {
   try {
     const parsed = JSON.parse(text) as { message?: string };
     if (parsed && typeof parsed.message === 'string') return parsed.message;

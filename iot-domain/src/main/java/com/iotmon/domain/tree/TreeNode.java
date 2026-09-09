@@ -7,19 +7,10 @@ import java.util.Comparator;
 import java.util.Optional;
 
 /**
- * 監控樹的一個節點。
- *
- * <p>兩件事在這裡被強制：嵌套規則（透過 {@link #attachUnder}）與**同層順序的總序**。
- * 順序用 {@code (sortOrder, id)} 比較，{@code id} 是決定性的平手判斷——
- * 兩個節點 sortOrder 相同時，順序仍然是唯一的。
- * 「前端顯示是無序的」這個問題，根源幾乎都是後端只給了一個可能相同的排序鍵。
- *
- * @param id        資料庫主鍵；尚未持久化時為 null
- * @param kind      節點種類
- * @param name      顯示名稱
- * @param parentId  父節點；根節點為 null
- * @param deviceId  只有 DEVICE 節點有值，指向會發遙測的那台裝置
- * @param sortOrder 同層排序鍵。刻意留間隔（見 {@link #ORDER_GAP}），插入中間不必重新編號
+ * 監控樹的一個節點。嵌套規則在 {@link #attachUnder}；同層順序用 {@code (sortOrder, id)} 比較，
+ * id 是決定性的平手判斷——「前端顯示無序」的根源幾乎都是後端只給了一個可能相同的排序鍵。
+ * @param deviceId 只有 DEVICE 節點有值
+ * @param sortOrder 同層排序鍵，刻意留間隔（{@link #ORDER_GAP}），插入中間不必重新編號
  */
 public record TreeNode(Long id, NodeKind kind, String name, Long parentId,
                        DeviceId deviceId, long sortOrder) {

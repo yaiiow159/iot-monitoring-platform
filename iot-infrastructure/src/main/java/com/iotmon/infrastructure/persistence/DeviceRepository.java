@@ -1,13 +1,11 @@
 package com.iotmon.infrastructure.persistence;
 
 import com.iotmon.domain.cabinet.Cabinet;
-import com.iotmon.domain.cabinet.Cabinet;
 import com.iotmon.domain.device.DeviceId;
 import com.iotmon.domain.device.DeviceStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -15,12 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * 裝置清單、單筆、註冊，以及儀表板摘要要用的統計。
- *
- * <p>清單一定有上限：一萬台裝置的表沒有上限的 SELECT 遲早會有人打爆。
- * 前端的用法是「依機櫃各查一次」，每次數十台，1000 的上限是給沒帶篩選的呼叫兜底。
- */
+/** 裝置清單、單筆、註冊與儀表板摘要。清單一定有上限：一萬台裝置的表沒有上限的 SELECT 遲早有人打爆。 */
 @Repository
 public class DeviceRepository {
 
@@ -83,10 +76,7 @@ public class DeviceRepository {
             counts.put(s, 0L);
         }
         jdbc.query("SELECT status, count(*) AS n FROM device GROUP BY status", rs -> {
-            try {
-                counts.put(DeviceStatus.valueOf(rs.getString("status")), rs.getLong("n"));
-            } catch (IllegalArgumentException unknownStatus) {
-            }
+            counts.put(DeviceStatus.valueOf(rs.getString("status")), rs.getLong("n")); // 欄位有 CHECK 約束
         });
         return counts;
     }
@@ -107,11 +97,8 @@ public class DeviceRepository {
     }
 
     private Row mapRow(java.sql.ResultSet rs, int i) throws java.sql.SQLException {
-        short slotRaw = rs.getShort("slot_no");
-        Short slotNo = rs.wasNull() ? null : slotRaw;
-        Timestamp seen = rs.getTimestamp("last_seen_at");
         return new Row(rs.getString("device_id"), rs.getString("serial_no"), rs.getString("model_code"),
-                rs.getString("cabinet_code"), slotNo, DeviceStatus.valueOf(rs.getString("status")),
-                seen == null ? null : seen.toInstant());
+                rs.getString("cabinet_code"), Rows.nullableShort(rs, "slot_no"),
+                DeviceStatus.valueOf(rs.getString("status")), Rows.instant(rs, "last_seen_at"));
     }
 }

@@ -3,13 +3,8 @@ package com.iotmon.application.query;
 import java.time.Duration;
 
 /**
- * 查詢解析度：決定一次歷史查詢該讀三層中的哪一層。
- *
- * <p>層級由後端依時間跨度決定，**不開放呼叫端指定**。
- * 開放的話遲早有人對兩年的範圍要求原始精度，把資料庫拖垮——
- * 而那個人通常是三個月後的自己。
- *
- * <p>回應一定會帶上實際使用的層級，呼叫端才知道拿到的是原始值還是聚合值。
+ * 查詢解析度：三層中該讀哪一層由後端依跨度決定，不開放呼叫端指定——
+ * 開放的話遲早有人對兩年要求原始精度。回應一定帶上實際使用的層級。
  */
 public enum Resolution {
 
@@ -41,16 +36,9 @@ public enum Resolution {
     private static final Duration RAW_SAMPLING_INTERVAL = Duration.ofSeconds(1);
 
     /**
-     * 依請求跨度與可回傳的點數上限挑選層級。
-     *
-     * <p>兩個條件都要滿足：跨度要落在該層的保留範圍內，**而且**產生的點數不能超過上限。
-     * 只看跨度是不夠的——六小時的原始資料是 21,600 點，遠超過任何圖表畫得下的量。
-     *
-     * <p>點數超標時**往粗的層級退，而不是拒絕**。使用者要的是「這段時間發生什麼事」，
-     * 一小時精度的答案遠好過一則錯誤訊息；而回應裡的 resolution 欄位
-     * 會誠實告訴呼叫端他拿到的是哪一層。
-     *
-     * @throws IllegalArgumentException 連最粗的層級都超過上限時（例如查一百年）
+     * 依跨度與點數上限挑層級：跨度要在保留範圍內，且點數不超過上限（六小時的原始資料就是 21,600 點）。
+     * 點數超標時往粗的層級退而不是拒絕，回應的 resolution 會誠實說拿到的是哪一層。
+     * @throws IllegalArgumentException 連最粗的層級都超過上限時
      */
     public static Resolution forSpan(Duration span, int maxPoints) {
         if (span == null || span.isNegative() || span.isZero()) {

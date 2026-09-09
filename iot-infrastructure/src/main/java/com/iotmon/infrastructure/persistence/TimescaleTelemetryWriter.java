@@ -16,18 +16,9 @@ import java.sql.Timestamp;
 import java.util.List;
 
 /**
- * 批次寫入 TimescaleDB。
- *
- * <p>整條路徑上唯一會碰資料庫的地方，也是每秒五萬點的瓶頸所在。
- * 三個關鍵取捨：
- *
- * <ul>
- *   <li><b>只有批次介面</b>——單筆寫入在這個流量下必然拖垮連線池</li>
- *   <li><b>不用 JPA</b>——實體管理、髒檢查與一級快取在這裡全是純開銷，
- *       而且會把整批資料留在記憶體裡直到交易結束</li>
- *   <li><b>不加唯一約束</b>——維護索引的成本高於它擋掉的重複，
- *       而重複點在聚合時本來就會被 avg 吸收</li>
- * </ul>
+ * 批次寫入 TimescaleDB，整條路徑唯一碰資料庫的地方。只有批次介面（單筆會拖垮連線池）、
+ * 不用 JPA（實體管理在這裡全是開銷）、不加唯一約束（維護索引比擋重複貴，重複點聚合時被 avg 吸收）。
+ * 驅動要開 reWriteBatchedInserts，否則 batchUpdate 仍是每列一次往返（performance.md）。
  */
 @Component
 public class TimescaleTelemetryWriter implements TelemetryWriter {

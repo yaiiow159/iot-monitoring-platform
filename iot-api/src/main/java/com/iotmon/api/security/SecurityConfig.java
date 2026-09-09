@@ -17,17 +17,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import java.nio.charset.StandardCharsets;
 
 /**
- * 授權規則集中在這一個地方，控制器裡不再檢查角色。
- *
- * <p>規則寫成「路徑＋方法 → 角色」而不是散在方法上的註解，
- * 是因為漏掉一個註解就是一個越權漏洞，而集中的清單一眼就能審。
- *
- * <ul>
- *   <li>讀：任何登入者</li>
- *   <li>機型、機櫃、告警規則、使用者、稽核：ADMIN</li>
- *   <li>註冊裝置、監控樹：ADMIN 或 OPERATOR</li>
- *   <li>登入、actuator、WebSocket 握手（自己驗 token）、API 文件：免登入</li>
- * </ul>
+ * 授權規則集中在這一處，控制器不檢查角色：漏掉一個註解就是一個越權漏洞，集中的清單一眼能審。
+ * 讀：任何登入者；機型、機櫃、規則、使用者、稽核：ADMIN；註冊裝置、監控樹：ADMIN 或 OPERATOR。
  */
 @Configuration
 @EnableWebSecurity

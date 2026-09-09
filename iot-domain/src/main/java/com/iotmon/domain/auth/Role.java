@@ -1,13 +1,8 @@
 package com.iotmon.domain.auth;
 
 /**
- * 角色。刻意只有三種：再細的權限矩陣在內部系統裡通常變成沒人敢動的負擔。
- *
- * <ul>
- *   <li>ADMIN：改設定（機型、機櫃、規則、使用者）、看稽核</li>
- *   <li>OPERATOR：註冊裝置、調整監控樹；不能改會影響所有裝置的設定</li>
- *   <li>VIEWER：只看</li>
- * </ul>
+ * 角色刻意只有三種，再細的權限矩陣在內部系統裡通常變成沒人敢動的負擔。
+ * ADMIN 改設定與看稽核；OPERATOR 註冊裝置、調整監控樹；VIEWER 只看。
  */
 public enum Role {
     ADMIN, OPERATOR, VIEWER;

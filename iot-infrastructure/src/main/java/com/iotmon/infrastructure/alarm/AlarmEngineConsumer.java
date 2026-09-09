@@ -25,13 +25,8 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 告警引擎：遙測 → 規則比對 → 告警列 → {@code iot.alarm} 事件。
- *
- * <p>與寫入消費端是**不同的消費群組**。兩者的失敗代價不同：入庫掉一筆是資料缺口，
- * 告警掉一則可能是事故，但它們都不該因為對方慢而受影響（ADR-0003）。
- *
- * <p>「違反門檻」與「該發告警」不是同一件事——抖動的處理在 {@link AlarmEvaluator}。
- * 這裡只負責把狀態機的決定落地：寫資料庫、發事件。
+ * 告警引擎：遙測 → 規則比對 → 告警列 → iot.alarm 事件。與寫入端是不同的消費群組（ADR-0003），
+ * 兩者失敗代價不同，不該因對方慢而受影響。抖動的處理在 {@link AlarmEvaluator}，這裡只把決定落地。
  */
 @Component
 public class AlarmEngineConsumer {

@@ -1,20 +1,16 @@
 package com.iotmon.infrastructure.alarm;
 
+import com.iotmon.infrastructure.persistence.Rows;
+import com.iotmon.infrastructure.persistence.Rows;
+import com.iotmon.infrastructure.persistence.Rows;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 告警列表：一次 join 裝置與規則，湊出前端需要的整列。
- *
- * <p>前端的 Alarm 型別要 deviceName、cabinetId、metric、threshold、message，
- * 這些散在三張表。與其讓前端拿到 id 再各打一次，不如在資料庫一次 join 回來——
- * 這正是 ADR-0001 選單一資料庫的理由之一。
- */
+/** 告警列表：一次 join 裝置與規則，湊出前端整列要的欄位，不讓前端拿到 id 再各打一次。 */
 @Repository
 public class AlarmQueryRepository {
 
@@ -61,15 +57,10 @@ public class AlarmQueryRepository {
         int effective = limit == null || limit <= 0 ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT);
         args.add(effective);
 
-        return jdbc.query(sql.toString(), (rs, i) -> {
-            double triggerRaw = rs.getDouble("trigger_value");
-            Double trigger = rs.wasNull() ? null : triggerRaw;
-            Timestamp resolved = rs.getTimestamp("resolved_at");
-            return new Row(rs.getLong("id"), rs.getString("device_id"), rs.getString("serial_no"),
-                    rs.getString("cabinet_code"),
-                    rs.getString("metric_key"), rs.getString("severity"), rs.getString("state"),
-                    rs.getString("rule_name"), trigger, rs.getDouble("threshold"),
-                    rs.getTimestamp("fired_at").toInstant(), resolved == null ? null : resolved.toInstant());
-        }, args.toArray());
+        return jdbc.query(sql.toString(), (rs, i) -> new Row(rs.getLong("id"), rs.getString("device_id"),
+                rs.getString("serial_no"), rs.getString("cabinet_code"), rs.getString("metric_key"),
+                rs.getString("severity"), rs.getString("state"), rs.getString("rule_name"),
+                Rows.nullableDouble(rs, "trigger_value"), rs.getDouble("threshold"),
+                Rows.instant(rs, "fired_at"), Rows.instant(rs, "resolved_at")), args.toArray());
     }
 }

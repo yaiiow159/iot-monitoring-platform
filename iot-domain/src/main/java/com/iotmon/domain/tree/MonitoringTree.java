@@ -12,14 +12,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 把扁平的節點清單組成有序、帶彙總的樹。
- *
- * <p>純領域計算，沒有任何 I/O：給它節點清單與「每個節點自己身上的告警」，
- * 它回傳排好序、每個節點都算好 rollup 的樹。這讓「上浮是否正確」可以用
- * 幾行測試在毫秒內驗證，而不需要起資料庫。
- *
- * <p>子節點的順序在這裡定案（{@link TreeNode#SIBLING_ORDER}），
- * 之後任何一層都不該再排序——重排一次就是多一個可能排錯的地方。
+ * 把扁平的節點清單組成有序、帶彙總的樹。純計算沒有 I/O，「上浮是否正確」能用幾行測試驗證。
+ * 子節點的順序在這裡定案（{@link TreeNode#SIBLING_ORDER}），之後任何一層都不該再排序。
  */
 public final class MonitoringTree {
 

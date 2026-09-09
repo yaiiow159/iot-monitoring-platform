@@ -12,3 +12,4 @@ benchmark/results/
 
 # 範例檔要進版控，真正的 .env 不進
 !web/.env.example
+benchmark/.emqx-token

@@ -2,6 +2,7 @@ package com.iotmon.infrastructure.auth;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.iotmon.infrastructure.persistence.Rows;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -55,7 +56,7 @@ public class AuditLogRepository {
                 + (actor == null || actor.isBlank() ? "" : " WHERE actor = ?")
                 + " ORDER BY at DESC, id DESC LIMIT ?";
         Object[] args = actor == null || actor.isBlank() ? new Object[]{effective} : new Object[]{actor.trim(), effective};
-        return jdbc.query(sql, (rs, i) -> new Entry(rs.getLong("id"), rs.getTimestamp("at").toInstant(),
+        return jdbc.query(sql, (rs, i) -> new Entry(rs.getLong("id"), Rows.instant(rs, "at"),
                 rs.getString("actor"), rs.getString("action"), rs.getString("target_type"),
                 rs.getString("target_id"), rs.getString("outcome"), parse(rs.getString("detail"))), args);
     }

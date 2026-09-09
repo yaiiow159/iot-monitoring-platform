@@ -8,15 +8,8 @@ import org.springframework.stereotype.Component;
 import java.util.Optional;
 
 /**
- * 指標代號 ↔ 數值 id 的字典。
- *
- * <p>時序表每列存 SMALLINT 而不是 63 位元組的字串，每列省下約 60 位元組。
- * 以每秒五萬筆計算，這個轉換一天就省下 260 GB 的原始寫入量——
- * 「兩年歷史放得下」有一半是靠這件事。
- *
- * <p>與 {@link DeviceIdResolver} 的差別只有一點：指標**會自動建立**。
- * 指標種類由機型定義決定，數量以十計，新指標出現代表有新機型上線，
- * 不是打錯字。裝置則相反，見 DeviceIdResolver 的說明。
+ * 指標代號 ↔ 數值 id。時序表每列存 SMALLINT 而不是字串，每列省約 60 位元組，「兩年放得下」有一半靠這件事。
+ * 指標會自動建立（新指標代表新機型上線，不是打錯字），裝置則相反，見 {@link DeviceIdResolver}。
  */
 @Component
 public class MetricDictionary {

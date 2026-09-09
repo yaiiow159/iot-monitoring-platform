@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import type { AlarmSeverity, CreateNodeRequest, NodeKind, TreeNode, TreePathNode } from '../api/types';
 import { AlarmTable } from '../components/AlarmTable';
+import { Feedback, useSubmit } from '../components/forms';
 import { useAsync } from '../hooks/useAsync';
 import { can, useSession } from '../auth/session';
 import { useLive, useLiveNodes } from '../live/LiveContext';
@@ -637,46 +638,35 @@ function NodeDetail({ node, roots, canMoveUp, canMoveDown, moving, moveError, on
 
 // ---------------------------------------------------------------- 新增節點
 
-/**
- * 新增節點的表單。能選的類型由父節點決定，跟後端的嵌套規則同一份：
- * 根層只能是 Equipment；Sensor 底下可以是 Sensor 或 Device；Device 不能有子節點。
- * 選錯的話後端仍會拒絕，訊息原文顯示。
- */
+/** 新增節點。可選的類型由父節點決定，與後端的嵌套規則同一份；選錯後端仍會拒絕，訊息原文顯示。 */
 function NodeForm({ parent, onCreated }: { parent: TreeNode | null; onCreated(created: TreeNode): void }) {
   const allowed: NodeKind[] = parent === null ? ['EQUIPMENT'] : parent.kind === 'EQUIPMENT' ? ['SENSOR'] : ['SENSOR', 'DEVICE'];
   const [kind, setKind] = useState<NodeKind>(allowed[0]);
   const [name, setName] = useState('');
   const [deviceId, setDeviceId] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const effectiveKind = allowed.includes(kind) ? kind : allowed[0];
   const isDevice = effectiveKind === 'DEVICE';
-  const canSubmit = !busy && (isDevice ? deviceId.trim() !== '' : name.trim() !== '');
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canSubmit) return;
-    setBusy(true);
-    setError(null);
-    const request: CreateNodeRequest = {
-      kind: effectiveKind,
-      // Device 節點的名字就用裝置代號，讓樹上的名字跟裝置頁對得起來
-      name: isDevice ? name.trim() || deviceId.trim().toUpperCase() : name.trim(),
-      parentId: parent?.id ?? null,
-      deviceId: isDevice ? deviceId.trim().toUpperCase() : undefined,
-    };
-    try {
-      const created = await api.createNode(request);
+  const { busy, ok, error, submit } = useSubmit(
+    () => {
+      const request: CreateNodeRequest = {
+        kind: effectiveKind,
+        // Device 節點的名字就用裝置代號，讓樹上的名字跟裝置頁對得起來
+        name: isDevice ? name.trim() || deviceId.trim().toUpperCase() : name.trim(),
+        parentId: parent?.id ?? null,
+        deviceId: isDevice ? deviceId.trim().toUpperCase() : undefined,
+      };
+      return api.createNode(request);
+    },
+    (created) => {
       setName('');
       setDeviceId('');
       onCreated(created);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
+      return `已新增「${created.name}」`;
+    },
+  );
+  const canSubmit = !busy && (isDevice ? deviceId.trim() !== '' : name.trim() !== '');
 
   return (
     <form className="form node-form" onSubmit={submit}>
@@ -713,12 +703,7 @@ function NodeForm({ parent, onCreated }: { parent: TreeNode | null; onCreated(cr
             : 'Sensor 可以再掛 Sensor（無限嵌套）或 Device；Device 是最後一層。'}
         排到同層最後；順序之後可用上移／下移調整。
       </p>
-      {error && (
-        <p className="error" role="alert">
-          <span className="caption">後端拒絕</span>
-          {error}
-        </p>
-      )}
+      <Feedback ok={ok} error={error} />
     </form>
   );
 }

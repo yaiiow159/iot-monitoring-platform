@@ -8,14 +8,8 @@ import org.springframework.stereotype.Component;
 import java.util.Optional;
 
 /**
- * 裝置 → 機型、以及裝置 → 監控樹節點。
- *
- * <p>告警引擎每一筆遙測都要問「這台是什麼機型」才知道套哪些規則；
- * 推播端每則告警都要問「這台在樹的哪裡」才知道祖先鏈。
- * 兩者都建在 {@link CachedLookup} 上，跟 DeviceIdResolver 同一套機制。
- *
- * <p>樹節點的快取在裝置被掛到樹上時要失效——本階段樹由設定中心維護、
- * 變動頻率低，先用短 TTL 的替代方案：不快取「不在樹上」這個結果。
+ * 裝置 → 機型、裝置 → 監控樹節點，都建在 {@link CachedLookup} 上。
+ * 樹變動頻率低，先不快取「不在樹上」這個結果，等設定中心掛節點時再做失效。
  */
 @Component
 public class DeviceCatalog {

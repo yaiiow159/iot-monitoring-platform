@@ -1,6 +1,7 @@
 package com.iotmon.infrastructure.auth;
 
 import com.iotmon.domain.auth.Role;
+import com.iotmon.infrastructure.persistence.Rows;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -48,6 +49,6 @@ public class UserRepository {
     private UserRow map(java.sql.ResultSet rs, int i) throws java.sql.SQLException {
         return new UserRow(rs.getLong("id"), rs.getString("username"), rs.getString("password_hash"),
                 Role.valueOf(rs.getString("role")), rs.getString("display_name"), rs.getBoolean("enabled"),
-                rs.getTimestamp("created_at").toInstant());
+                Rows.instant(rs, "created_at"));
     }
 }

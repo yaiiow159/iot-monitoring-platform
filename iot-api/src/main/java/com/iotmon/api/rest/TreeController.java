@@ -6,7 +6,6 @@ import com.iotmon.domain.tree.NodeKind;
 import com.iotmon.domain.tree.Rollup;
 import com.iotmon.domain.tree.TreeNode;
 import com.iotmon.infrastructure.persistence.MonitoringTreeRepository;
-import org.springframework.dao.InvalidDataAccessApiUsageException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -62,31 +61,21 @@ public class TreeController {
      * 違反回 400 並說明是哪條規則；資料庫的觸發器是第二道防線。
      */
     @PostMapping("/nodes")
-    public ResponseEntity<?> create(@RequestBody CreateNodeRequest request) {
-        try {
-            NodeKind kind = NodeKind.valueOf(request.kind().toUpperCase());
-            DeviceId deviceId = request.deviceId() == null ? null : DeviceId.of(request.deviceId());
-            long order = request.sortOrder() == null ? 0 : request.sortOrder();
+    @ResponseStatus(HttpStatus.CREATED)
+    public PlainNode create(@RequestBody CreateNodeRequest request) {
+        NodeKind kind = Params.enumOf(NodeKind.class, request.kind(), "節點類型");
+        DeviceId deviceId = request.deviceId() == null ? null : DeviceId.of(request.deviceId());
+        long order = request.sortOrder() == null ? 0 : request.sortOrder();
 
-            TreeNode candidate;
-            if (request.parentId() == null) {
-                candidate = TreeNode.equipment(null, request.name(), order);
-            } else {
-                TreeNode parent = repository.findById(request.parentId())
-                        .orElseThrow(() -> new IllegalArgumentException("父節點不存在：" + request.parentId()));
-                candidate = TreeNode.attachUnder(parent, null, kind, request.name(), deviceId, order);
-            }
-
-            TreeNode saved = repository.insert(candidate, request.parentId());
-            return ResponseEntity.status(HttpStatus.CREATED).body(PlainNode.from(saved));
-        } catch (IllegalArgumentException | InvalidDataAccessApiUsageException invalid) {
-            // @Repository 裡拋的 IllegalArgumentException 會被 Spring 轉譯，訊息在最內層
-            Throwable root = invalid;
-            while (root.getCause() != null && root.getCause() != root) {
-                root = root.getCause();
-            }
-            return ResponseEntity.badRequest().body(Map.of("message", String.valueOf(root.getMessage())));
+        TreeNode candidate;
+        if (request.parentId() == null) {
+            candidate = TreeNode.equipment(null, request.name(), order);
+        } else {
+            TreeNode parent = repository.findById(request.parentId())
+                    .orElseThrow(() -> new IllegalArgumentException("父節點不存在：" + request.parentId()));
+            candidate = TreeNode.attachUnder(parent, null, kind, request.name(), deviceId, order);
         }
+        return PlainNode.from(repository.insert(candidate, request.parentId()));
     }
 
     /** 同層重排：只改 sortOrder，不動 path。 */

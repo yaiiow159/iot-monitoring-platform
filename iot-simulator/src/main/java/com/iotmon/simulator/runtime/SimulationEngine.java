@@ -28,16 +28,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 建立整批裝置、連線、然後用少量執行緒推動它們回報。
- *
- * <h2>為什麼發佈不用虛擬執行緒</h2>
- *
- * <p>虛擬執行緒的價值在「大量阻塞等待」。發佈這條路徑沒有阻塞——序列化是 CPU 工作，
- * HiveMQ 的 publish 是非阻塞的 Netty 寫入，每秒五萬個虛擬執行緒只會多出排程與堆疊成本。
- * 所以發佈走固定大小的排程器，分片數大約等於核心數。
- *
- * <p>反過來，啟動時建立一萬條連線是「等 broker 回 CONNACK」的純等待，
- * 用平台執行緒做要嘛慢要嘛開一堆執行緒空等，這裡就正好適合虛擬執行緒。
+ * 建立整批裝置、連線，用少量執行緒推動回報。發佈不用虛擬執行緒：那條路徑沒有阻塞，只會多出排程成本；
+ * 啟動時等一萬個 CONNACK 才是純等待，那裡才用虛擬執行緒。
  */
 @Component
 public class SimulationEngine implements SmartLifecycle {

@@ -27,24 +27,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * MQTT → Kafka 橋接。
- *
- * <p>整條路徑上最不能塞車的一段：它是唯一與裝置直接相連的環節，
- * 這裡一慢，MQTT broker 的佇列就會堆積，最終導致裝置端被斷線。
- *
- * <p>因此它只做三件事：收訊息、確認格式能解析、丟進 Kafka。
- * 驗證裝置是否註冊、指標是否合法、讀數是否超出量程——全部留給消費端，
- * 那些工作可以慢慢做，這裡不行（見 ADR-0003）。
- *
- * <p><b>一萬台裝置的實測教訓</b>（見 performance.md）：單一連線、回呼跑在 Netty 事件迴圈上，
- * 每秒一萬則就把那條執行緒跑滿——keepalive 收不到、被 broker 踢掉、重連、佇列滿了丟訊息，
- * 最後只有五分之一的遙測到得了 Kafka。所以現在是：
- * <ul>
- *   <li><b>多條連線用共享訂閱分流</b>（{@code $share/iot-bridge/...}），broker 把訊息輪流派給各連線</li>
- *   <li><b>回呼在獨立的執行緒池</b>，事件迴圈只負責收封包與回 PUBACK</li>
- *   <li>{@code cleanStart=true}：共享訂閱不需要持久會話，斷線期間的訊息由其他連線接手，
- *       而不是堆在一個沒人讀的會話佇列裡</li>
- * </ul>
+ * MQTT → Kafka 橋接：收訊息、確認能解析、丟進 Kafka，其餘驗證留給消費端（ADR-0003）。
+ * 多條連線共享訂閱、回呼離開事件迴圈的理由見 ADR-0007：單一連線在每秒一萬則時會被 broker 踢掉。
  */
 @Component
 public class MqttBridge {

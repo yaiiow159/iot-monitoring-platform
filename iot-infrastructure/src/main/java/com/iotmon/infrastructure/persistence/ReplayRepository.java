@@ -9,7 +9,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.time.temporal.TemporalUnit;
@@ -18,17 +17,8 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 歷史回放：「某個時間點，這個機櫃長什麼樣」。
- *
- * <p>這是「兩年資料一秒內」在畫面上的證明。關鍵跟歷史查詢一樣：不掃原始資料。
- * 時間點落在哪一層就讀哪一層的**單一桶**——兩年前的某一小時只讀 40 台裝置 × 幾個指標的 40 多列，
- * 跟查十分鐘前一樣快。
- *
- * <ul>
- *   <li>15 分鐘內：連續聚合可能還沒把最新資料算進去，直接對原始表做一分鐘的聚合</li>
- *   <li>30 天內：分鐘層</li>
- *   <li>更久：小時層，保留五年</li>
- * </ul>
+ * 歷史回放：某個時間點這個機櫃長什麼樣。跟歷史查詢一樣不掃原始資料——時間點落在哪一層就讀那一層的單一桶，
+ * 兩年前的某一小時只讀幾十列，跟查十分鐘前一樣快。15 分鐘內讀原始表（連續聚合有延遲），30 天內分鐘層，更久小時層。
  */
 @Repository
 public class ReplayRepository {
@@ -93,7 +83,7 @@ public class ReplayRepository {
             result.add(new DeviceSnapshot(d.deviceId(), d.serialNo(), d.modelCode(), d.slot(),
                     readings.getOrDefault(d.id(), Map.of()), alarms.getOrDefault(d.id(), List.of())));
         }
-        return Optional.of(new Snapshot(at, resolution, bucketStart, bucketEnd, Collections.unmodifiableList(result)));
+        return Optional.of(new Snapshot(at, resolution, bucketStart, bucketEnd, List.copyOf(result)));
     }
 
     /** 這段期間內機櫃裡「曾經在響」的告警，畫在時間軸上當標記 */
@@ -107,12 +97,9 @@ public class ReplayRepository {
                 WHERE c.code = ? AND a.fired_at < ? AND (a.resolved_at IS NULL OR a.resolved_at > ?)
                 ORDER BY a.fired_at
                 LIMIT ?
-                """, (rs, i) -> {
-            Timestamp resolved = rs.getTimestamp("resolved_at");
-            return new TimelineAlarm(rs.getLong("id"), rs.getString("device_id"), rs.getString("metric_key"),
-                    rs.getString("severity"), rs.getString("name"), rs.getTimestamp("fired_at").toInstant(),
-                    resolved == null ? null : resolved.toInstant());
-        }, cabinetCode, Timestamp.from(to), Timestamp.from(from), limit);
+                """, (rs, i) -> new TimelineAlarm(rs.getLong("id"), rs.getString("device_id"), rs.getString("metric_key"),
+                rs.getString("severity"), rs.getString("name"), Rows.instant(rs, "fired_at"),
+                Rows.instant(rs, "resolved_at")), cabinetCode, Timestamp.from(to), Timestamp.from(from), limit);
     }
 
     // ── 內部 ─────────────────────────────────────────────────────────────
@@ -123,11 +110,8 @@ public class ReplayRepository {
                 FROM device d JOIN cabinet c ON c.id = d.cabinet_id
                 WHERE c.code = ?
                 ORDER BY d.slot_no
-                """, (rs, i) -> {
-            short slotRaw = rs.getShort("slot_no");
-            return new DeviceRow(rs.getInt("id"), rs.getString("device_id"), rs.getString("serial_no"),
-                    rs.getString("model_code"), rs.wasNull() ? null : slotRaw);
-        }, cabinetCode);
+                """, (rs, i) -> new DeviceRow(rs.getInt("id"), rs.getString("device_id"), rs.getString("serial_no"),
+                rs.getString("model_code"), Rows.nullableShort(rs, "slot_no")), cabinetCode);
     }
 
     private boolean cabinetExists(String cabinetCode) {
@@ -137,7 +121,7 @@ public class ReplayRepository {
 
     private Map<Integer, Map<String, Reading>> readingsAt(Resolution resolution, List<DeviceRow> devices,
                                                           Instant bucketStart, Instant bucketEnd) {
-        String placeholders = String.join(",", Collections.nCopies(devices.size(), "?"));
+        String placeholders = Rows.placeholders(devices.size());
         List<Object> args = new ArrayList<>();
         for (DeviceRow d : devices) {
             args.add(d.id());
@@ -178,7 +162,7 @@ public class ReplayRepository {
     }
 
     private Map<Integer, List<ActiveAlarm>> alarmsActiveAt(List<DeviceRow> devices, Instant at) {
-        String placeholders = String.join(",", Collections.nCopies(devices.size(), "?"));
+        String placeholders = Rows.placeholders(devices.size());
         List<Object> args = new ArrayList<>();
         for (DeviceRow d : devices) {
             args.add(d.id());
@@ -192,13 +176,10 @@ public class ReplayRepository {
                 WHERE a.device_id IN (%s) AND a.fired_at <= ? AND (a.resolved_at IS NULL OR a.resolved_at > ?)
                 ORDER BY a.fired_at
                 """.formatted(placeholders), (java.sql.ResultSet rs) -> {
-            double triggerRaw = rs.getDouble("trigger_value");
-            Double trigger = rs.wasNull() ? null : triggerRaw;
-            Timestamp resolved = rs.getTimestamp("resolved_at");
             byDevice.computeIfAbsent(rs.getInt("device_id"), k -> new ArrayList<>())
                     .add(new ActiveAlarm(rs.getLong("id"), rs.getString("metric_key"), rs.getString("severity"),
-                            rs.getString("name"), trigger, rs.getTimestamp("fired_at").toInstant(),
-                            resolved == null ? null : resolved.toInstant()));
+                            rs.getString("name"), Rows.nullableDouble(rs, "trigger_value"),
+                            Rows.instant(rs, "fired_at"), Rows.instant(rs, "resolved_at")));
         }, args.toArray());
         return byDevice;
     }

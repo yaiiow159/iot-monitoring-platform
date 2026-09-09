@@ -3,18 +3,12 @@ package com.iotmon.simulator.catalog;
 import com.iotmon.domain.model.MetricDefinition;
 
 /**
- * 一個指標「怎麼產生數值」的模擬設定。
- *
- * <p>domain 的 {@link MetricDefinition} 只說得出物理量程，但量程不等於運轉範圍——
- * 溫度感測器量得到 80°C 不代表機房會跑到 80°C。分開兩者，超出量程的故障才跟正常值有明顯區隔。
- *
- * @param definition    domain 的指標定義，量程由它決定
- * @param kind          數值型態
- * @param bandLow       正常運轉帶下限
- * @param bandHigh      正常運轉帶上限
- * @param volatility    每次取樣的漂移幅度，佔運轉帶寬度的比例
+ * 一個指標怎麼產生數值。量程不等於運轉範圍：溫度感測器量得到 80°C 不代表機房會跑到 80°C，
+ * 分開兩者，超出量程的故障才跟正常值有明顯區隔。
+ * @param bandLow 正常運轉帶下限
+ * @param bandHigh 正常運轉帶上限
+ * @param volatility 每次取樣的漂移幅度，佔運轉帶寬度的比例
  * @param flipProbability BINARY 專用：每次取樣翻轉狀態的機率
- * @param decimals      輸出小數位數，同時決定 payload 大小
  */
 public record MetricProfile(MetricDefinition definition, Kind kind, double bandLow, double bandHigh,
                             double volatility, double flipProbability, int decimals) {

@@ -34,8 +34,7 @@ public class MonitoringTreeRepository {
 
     private static final RowMapper<TreeNode> NODE_MAPPER = (rs, i) -> {
         String deviceCode = rs.getString("device_code");
-        long parentRaw = rs.getLong("parent_id");
-        Long parentId = rs.wasNull() ? null : parentRaw;
+        Long parentId = Rows.nullableLong(rs, "parent_id");
         return new TreeNode(
                 rs.getLong("id"),
                 NodeKind.valueOf(rs.getString("kind")),
@@ -97,7 +96,7 @@ public class MonitoringTreeRepository {
         if (nodeIds == null || nodeIds.isEmpty()) {
             return Set.of();
         }
-        String placeholders = String.join(",", java.util.Collections.nCopies(nodeIds.size(), "?"));
+        String placeholders = Rows.placeholders(nodeIds.size());
         Set<String> result = new java.util.HashSet<>();
         jdbc.query("""
                 SELECT DISTINCT d.device_id

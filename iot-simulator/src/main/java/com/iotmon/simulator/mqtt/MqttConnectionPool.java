@@ -15,25 +15,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 建立並持有所有 MQTT 連線。
- *
- * <h2>連線數與斷線偵測粒度的取捨</h2>
- *
- * <p>吞吐上，遙測根本不需要每台裝置一條連線：主題已經帶了 deviceId，一條連線就能替一整組裝置發佈，
- * 連線少代表 TCP buffer、Netty channel 與 CONNECT 風暴都跟著少。
- *
- * <p>但 <b>LWT 是綁在連線上的，不是綁在裝置上</b>。一條連線只能註冊一則遺言，
- * 所以一千台裝置共用十條連線時，拔掉一條連線只會產生 1 則 OFFLINE，而不是 100 則——
- * 而平台的斷線偵測正是建立在 LWT 上（見 README「斷線怎麼偵測」）。
- * 壓測若把這條路徑的流量砍成百分之一，就等於沒有測到它。
- *
- * <p>因此預設 {@code devices-per-connection = 1}：一台裝置一條連線、一組自己的遺言，
- * 與真實場域一致（docker-compose 也把 EMQX 的連線上限開到 50000 就是為此）。
- * 連線數不等於執行緒數——所有連線共用一組 Netty event loop，一萬條連線仍然只花掉數條執行緒。
- *
- * <p>把它調大是「用斷線偵測的解析度換訊息吞吐」的明確取捨：只有每組的第一台
- * （{@link MqttConnection#lwtOwner()}）會被 broker 宣告離線，其餘要靠平台的心跳逾時補網。
- * 想壓到每秒五萬則以上、而測試重點又不在斷線偵測時才該這麼做。
+ * 建立並持有所有 MQTT 連線。預設一台裝置一條連線：LWT 綁在連線上不是裝置上，
+ * 一千台共用十條連線時拔掉一條只會產生 1 則 OFFLINE 而不是 100 則，斷線偵測就等於沒測到。
+ * 調大 devices-per-connection 是拿斷線偵測的解析度換吞吐，只有測試重點不在斷線時才該這麼做。
+ * 連線數不等於執行緒數，一萬條連線共用一組 Netty event loop。
  */
 @Component
 public class MqttConnectionPool {

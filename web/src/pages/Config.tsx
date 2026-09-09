@@ -1,6 +1,7 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import { messageOf } from '../api/client';
 import type {
   AlarmSeverity,
   AuditEntry,
@@ -14,6 +15,7 @@ import type {
   Role,
 } from '../api/types';
 import { can, ROLE_LABEL, useSession } from '../auth/session';
+import { Feedback, Gate, useSubmit } from '../components/forms';
 import { useAsync } from '../hooks/useAsync';
 import {
   CABINET_TYPE_LABEL,
@@ -25,11 +27,7 @@ import {
   formatTime,
 } from '../utils/format';
 
-/*
- * 設定中心。每個分頁都是「左邊清單、右邊表單」。
- * 表單只做最基本的格式檢查；業務規則（槽位有沒有被占、門檻在不在量程內、機櫃收不收這個機型）
- * 全部交給後端的領域層判斷，表單原文顯示後端的拒絕原因——那些原因才是這個系統的知識所在。
- */
+/* 設定中心：左邊清單、右邊表單。表單只做格式檢查，業務規則交給後端，拒絕原因原文顯示。 */
 
 type Tab = 'models' | 'cabinets' | 'devices' | 'rules' | 'users' | 'audit';
 
@@ -64,56 +62,6 @@ export function Config() {
       {tab === 'users' && admin && <UsersPanel />}
       {tab === 'audit' && admin && <AuditPanel />}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------- 共用
-
-/** 送出狀態與結果訊息。成功與失敗都顯示原文，失敗的原文來自後端的領域規則。 */
-function useSubmit<T>(action: () => Promise<T>, onSuccess: (result: T) => string) {
-  const [busy, setBusy] = useState(false);
-  const [ok, setOk] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setOk(null);
-    setError(null);
-    try {
-      setOk(onSuccess(await action()));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-  return { busy, ok, error, submit };
-}
-
-function Feedback({ ok, error }: { ok: string | null; error: string | null }) {
-  return (
-    <>
-      {error && (
-        <p className="error" role="alert">
-          <span className="caption">後端拒絕</span>
-          {error}
-        </p>
-      )}
-      {ok && <p className="ok-box">{ok}</p>}
-    </>
-  );
-}
-
-/** 沒有權限就不畫表單，只留一句話說明誰能做；後端仍會再擋一次。 */
-function Gate({ action, children }: { action: 'configure' | 'operate'; children: ReactNode }) {
-  const session = useSession();
-  if (can(session?.user, action)) return <>{children}</>;
-  const who = action === 'configure' ? '管理員' : '管理員或值班工程師';
-  return (
-    <p className="empty">
-      你的角色是「{session ? ROLE_LABEL[session.user.role] : '未登入'}」，這個操作需要{who}。
-    </p>
   );
 }
 
@@ -1029,7 +977,7 @@ function AuditPanel() {
           <tbody>
             {(entries.data ?? []).map((e) => {
               const reply = e.detail && typeof e.detail.reply === 'string' ? (e.detail.reply as string) : null;
-              const replyMessage = reply ? messageOfReply(reply) : null;
+              const replyMessage = reply ? messageOf(reply, reply) : null;
               return (
                 <tr key={e.id} className={`audit-${e.outcome}`} onClick={() => setOpen(open === e.id ? null : e.id)}>
                   <td className="sub" title={formatTime(e.at)}>
@@ -1055,13 +1003,4 @@ function AuditPanel() {
       </div>
     </section>
   );
-}
-
-function messageOfReply(reply: string): string {
-  try {
-    const parsed = JSON.parse(reply) as { message?: string };
-    return parsed.message ?? reply;
-  } catch {
-    return reply;
-  }
 }

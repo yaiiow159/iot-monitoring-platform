@@ -1,5 +1,11 @@
 package com.iotmon.api.security;
 
+import com.iotmon.api.rest.ApiException;
+import com.iotmon.api.rest.Params;
+import com.iotmon.api.rest.ApiException;
+import com.iotmon.api.rest.Params;
+import com.iotmon.api.rest.ApiException;
+import com.iotmon.api.rest.Params;
 import com.iotmon.domain.auth.Role;
 import com.iotmon.infrastructure.auth.AuditLogRepository;
 import com.iotmon.infrastructure.auth.UserRepository;
@@ -103,26 +109,21 @@ public final class AuthController {
         }
 
         @PostMapping
-        public ResponseEntity<?> create(@RequestBody CreateUserRequest request) {
+        @ResponseStatus(HttpStatus.CREATED)
+        public UserResponse create(@RequestBody CreateUserRequest request) {
+            String username = request.username() == null ? "" : request.username().trim();
+            if (!username.matches("[a-z0-9_.-]{3,64}")) {
+                throw new IllegalArgumentException("帳號只能用小寫英數與 _ . -，3 到 64 字元");
+            }
+            if (request.password() == null || request.password().length() < 8) {
+                throw new IllegalArgumentException("密碼至少 8 字元");
+            }
+            Role role = Params.enumOf(Role.class, request.role(), "角色");
+            String display = Params.present(request.displayName()) ? request.displayName().trim() : username;
             try {
-                String username = request.username() == null ? "" : request.username().trim();
-                if (!username.matches("[a-z0-9_.-]{3,64}")) {
-                    throw new IllegalArgumentException("帳號只能用小寫英數與 _ . -，3 到 64 字元");
-                }
-                if (request.password() == null || request.password().length() < 8) {
-                    throw new IllegalArgumentException("密碼至少 8 字元");
-                }
-                Role role = Role.valueOf(request.role() == null ? "" : request.role().trim().toUpperCase());
-                String display = request.displayName() == null || request.displayName().isBlank()
-                        ? username : request.displayName().trim();
-                UserRepository.UserRow created = users.insert(username, encoder.encode(request.password()), role, display);
-                return ResponseEntity.status(HttpStatus.CREATED).body(UserResponse.from(created));
-            } catch (IllegalArgumentException e) {
-                String msg = e.getMessage() != null && e.getMessage().startsWith("No enum")
-                        ? "角色必須是 ADMIN、OPERATOR 或 VIEWER" : e.getMessage();
-                return ResponseEntity.badRequest().body(Map.of("message", msg));
+                return UserResponse.from(users.insert(username, encoder.encode(request.password()), role, display));
             } catch (DuplicateKeyException e) {
-                return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", "帳號已存在"));
+                throw ApiException.conflict("帳號已存在");
             }
         }
     }

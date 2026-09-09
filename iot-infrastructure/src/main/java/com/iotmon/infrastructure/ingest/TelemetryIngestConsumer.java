@@ -22,14 +22,8 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Kafka → TimescaleDB 的寫入消費端。
- *
- * <p>用批次監聽（`listener.type: batch`）而不是逐筆：一次 poll 拿回最多 2000 則訊息，
- * 展開成資料點後一次寫入。逐筆消費在每秒五萬點下等於每秒五萬次資料庫往返。
- *
- * <p>**手動 ack，而且只在寫入成功後才 ack。** 自動 ack 會在訊息交給處理邏輯的當下
- * 就推進偏移量，寫入失敗時那批資料就永久遺失了——而時序資料的缺口沒辦法從別處回推。
- * 寧可重複寫入（聚合時被 avg 吸收），也不要缺口。
+ * Kafka → TimescaleDB 的寫入消費端。批次監聽、一次寫入：逐筆消費等於每秒數萬次資料庫往返。
+ * 手動 ack 且只在寫入成功後 ack：寧可重複寫入（聚合時被 avg 吸收），也不要時序資料出現缺口。
  */
 @Component
 public class TelemetryIngestConsumer {
