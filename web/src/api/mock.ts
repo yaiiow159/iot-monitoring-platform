@@ -16,6 +16,9 @@ import type {
   LiveSocketHandlers,
   NodeKind,
   Overview,
+  ReplayAlarm,
+  ReplayDevice,
+  ReplayReading,
   Resolution,
   Role,
   SubscribeMessage,
@@ -1001,6 +1004,68 @@ export const mockApi: IotApi = {
     if (!node) throw new Error(`找不到節點 ${nodeId}`);
     node.sortOrder = sortOrder;
     return materialize(node, firingIndex());
+  },
+
+  async getReplay(cabinetId, at) {
+    await delay(90);
+    const tMs = Date.parse(at);
+    const ageMs = Date.now() - tMs;
+    const resolution: Resolution = ageMs < 15 * 60_000 ? 'raw' : ageMs <= 30 * DAY ? '1m' : '1h';
+    const bucketMs = resolution === '1h' ? HOUR : 60_000;
+    const bucketStart = Math.floor(tMs / bucketMs) * bucketMs;
+    const list = devicesByCabinet.get(cabinetId) ?? [];
+    return {
+      at,
+      resolution,
+      bucketStart: new Date(bucketStart).toISOString(),
+      bucketEnd: new Date(bucketStart + bucketMs).toISOString(),
+      queryMs: 3 + Math.round(Math.random() * 6),
+      devices: list.map((d): ReplayDevice => {
+        const model = MODEL_BY_CODE.get(d.modelCode);
+        // 用裝置代號的雜湊決定那一桶有沒有資料，同一個時間點重複拖回來答案要一樣
+        const hadData = d.status !== 'OFFLINE' || hash(`${d.deviceId}${bucketStart}`) % 5 !== 0;
+        const readings: Record<string, ReplayReading> = {};
+        if (hadData && model) {
+          for (const m of model.metrics) {
+            const v = valueAt(d.deviceId, m.key, tMs);
+            readings[m.key] = { avg: round(v), min: round(v - 0.4), max: round(v + 0.4), count: resolution === 'raw' ? 1 : 60 };
+          }
+        }
+        const active = alarms
+          .filter((a) => a.deviceId === d.deviceId)
+          .filter((a) => Date.parse(a.firedAt) <= tMs && (!a.resolvedAt || Date.parse(a.resolvedAt) > tMs))
+          .map((a): ReplayAlarm => ({
+            alarmId: a.alarmId,
+            metric: a.metric,
+            severity: a.severity,
+            message: a.message,
+            value: a.value,
+            firedAt: a.firedAt,
+            resolvedAt: a.resolvedAt,
+          }));
+        return { deviceId: d.deviceId, name: d.name, modelCode: d.modelCode, slot: d.slot, hadData, readings, alarms: active };
+      }),
+    };
+  },
+
+  async getReplayTimeline(cabinetId, from, to) {
+    await delay(60);
+    const f = Date.parse(from);
+    const t = Date.parse(to);
+    const ids = new Set((devicesByCabinet.get(cabinetId) ?? []).map((d) => d.deviceId));
+    const list = alarms
+      .filter((a) => ids.has(a.deviceId))
+      .filter((a) => Date.parse(a.firedAt) < t && (!a.resolvedAt || Date.parse(a.resolvedAt) > f))
+      .map((a) => ({
+        alarmId: a.alarmId,
+        deviceId: a.deviceId,
+        metric: a.metric,
+        severity: a.severity,
+        message: a.message,
+        firedAt: a.firedAt,
+        resolvedAt: a.resolvedAt,
+      }));
+    return { from, to, queryMs: 2, truncated: false, alarms: list };
   },
 
   connectLive: (handlers: LiveSocketHandlers) => new MockLiveSocket(handlers),

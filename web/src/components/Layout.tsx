@@ -37,6 +37,9 @@ export function Layout() {
           <NavLink to="/tree" className={navClass}>
             監控樹
           </NavLink>
+          <NavLink to="/replay" className={navClass}>
+            歷史回放
+          </NavLink>
           <NavLink to="/config" className={navClass}>
             設定中心
           </NavLink>

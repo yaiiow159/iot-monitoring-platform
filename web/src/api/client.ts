@@ -21,6 +21,8 @@ import type {
   LoginResponse,
   Overview,
   RegisterDeviceRequest,
+  ReplaySnapshot,
+  ReplayTimeline,
   SubscribeMessage,
   TelemetryQuery,
   TelemetrySeries,
@@ -231,6 +233,11 @@ export const httpApi: IotApi = {
       method: 'PATCH',
       body: JSON.stringify({ sortOrder }),
     }),
+
+  getReplay: (cabinetId: string, at: string) => request<ReplaySnapshot>(`/replay${qs({ cabinetId, at })}`),
+
+  getReplayTimeline: (cabinetId: string, from: string, to: string) =>
+    request<ReplayTimeline>(`/replay/timeline${qs({ cabinetId, from, to })}`),
 
   connectLive: (handlers: LiveSocketHandlers) => new ReconnectingLiveSocket(handlers),
 };

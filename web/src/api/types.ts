@@ -212,6 +212,65 @@ export interface DeviceQuery {
   modelCode?: string;
 }
 
+// -------------------------------------------------------------- 歷史回放
+
+export interface ReplayReading {
+  avg: number;
+  min: number;
+  max: number;
+  count: number;
+}
+
+export interface ReplayAlarm {
+  alarmId: number;
+  metric: string;
+  severity: AlarmSeverity;
+  message: string;
+  value: number | null;
+  firedAt: string;
+  resolvedAt: string | null;
+}
+
+export interface ReplayDevice {
+  deviceId: string;
+  name: string;
+  modelCode: string;
+  slot: number | null;
+  /** 那一桶有沒有任何讀數。不等於「在線」——上下線狀態沒有歷史。 */
+  hadData: boolean;
+  readings: Record<string, ReplayReading>;
+  alarms: ReplayAlarm[];
+}
+
+export interface ReplaySnapshot {
+  at: string;
+  /** 一定回：呼叫端要知道拿到的是原始值、分鐘平均還是小時平均。 */
+  resolution: Resolution;
+  bucketStart: string;
+  bucketEnd: string;
+  /** 伺服器端的查詢耗時。這一頁的存在意義就是把它印出來。 */
+  queryMs: number;
+  devices: ReplayDevice[];
+}
+
+export interface ReplayTimelineAlarm {
+  alarmId: number;
+  deviceId: string;
+  metric: string;
+  severity: AlarmSeverity;
+  message: string;
+  firedAt: string;
+  resolvedAt: string | null;
+}
+
+export interface ReplayTimeline {
+  from: string;
+  to: string;
+  queryMs: number;
+  truncated: boolean;
+  alarms: ReplayTimelineAlarm[];
+}
+
 // -------------------------------------------------------------- 監控樹
 
 /** Equipment 只能在根、Sensor 可無限自我嵌套、Device 是葉節點；規則由後端強制。 */
@@ -330,5 +389,8 @@ export interface IotApi {
   getAncestors(nodeId: number): Promise<TreePathNode[]>;
   createNode(request: CreateNodeRequest): Promise<TreeNode>;
   reorderNode(nodeId: number, sortOrder: number): Promise<TreeNode>;
+  /** 某個機櫃在某一刻的讀數與告警；後端依時間點的年齡決定讀哪一層。 */
+  getReplay(cabinetId: string, at: string): Promise<ReplaySnapshot>;
+  getReplayTimeline(cabinetId: string, from: string, to: string): Promise<ReplayTimeline>;
   connectLive(handlers: LiveSocketHandlers): LiveSocket;
 }

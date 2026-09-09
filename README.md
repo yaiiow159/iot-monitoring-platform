@@ -171,6 +171,19 @@ java -jar iot-simulator/target/iot-simulator.jar --simulator.device-count=1000
 
 ---
 
+## 設定中心、權限與回放
+
+- **設定中心的每個表單都只做格式檢查**，業務規則交給領域層，拒絕原因原文顯示：
+  「機櫃類型 POWER 不接受機型 TH-100」「門檻 500 超出量程 [-20, 80]，這條規則永遠不會觸發」。
+- **裝置級規則覆寫**：某台裝置在某個指標上有自己的規則，機型的同指標規則對它就全部失效；
+  建立時一併解除被取代的告警。詳見 [ADR-0006](docs/adr/0006-device-rule-overrides-model-rule-by-metric.md)。
+- **三種角色、集中授權、每個寫入請求都留稽核**（含被擋下的）。
+  JWT 同一把 token 給 REST 與 WebSocket 握手用。
+- **歷史回放**：拖動時間軸看某個機櫃在那一刻的讀數與告警，後端依時間點的年齡讀三層中的一層，
+  回應帶查詢耗時。兩年前的一小時桶跟三分鐘前的原始表一樣快，見 [performance.md](docs/performance.md)。
+- **可觀測性**：端到端延遲、消費端積壓、批次大小、推播丟棄，Grafana 儀表板檔案佈建，
+  見 [observability.md](docs/observability.md)。
+
 ## 實測數據
 
 見 [docs/performance.md](docs/performance.md)。所有數字都標明量測條件；

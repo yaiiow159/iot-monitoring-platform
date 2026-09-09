@@ -7,6 +7,7 @@ import { Config } from './pages/Config';
 import { DeviceDetail } from './pages/DeviceDetail';
 import { Login } from './pages/Login';
 import { Overview } from './pages/Overview';
+import { Replay } from './pages/Replay';
 import { Tree } from './pages/Tree';
 
 /** 沒登入就送去登入頁，並記住原本要去哪。 */
@@ -37,6 +38,7 @@ export function App() {
         <Route path="/" element={<Overview />} />
         <Route path="/devices/:deviceId" element={<DeviceDetail />} />
         <Route path="/tree" element={<Tree />} />
+        <Route path="/replay" element={<Replay />} />
         <Route path="/config" element={<Config />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

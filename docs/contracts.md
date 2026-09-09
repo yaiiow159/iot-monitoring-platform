@@ -230,6 +230,17 @@ WebSocket 的 `alarm` 推播會多帶 `ancestorIds`（由上到下），
 REST 帶 `Authorization: Bearer <token>`；WebSocket 帶 `?token=<token>`（瀏覽器的 WebSocket 不能設標頭）。
 401 與 403 的回應形狀跟其他錯誤一樣是 `{"message": "..."}`。
 
+## 歷史回放
+
+「某個時間點，這個機櫃長什麼樣」。層級由時間點的年齡決定，呼叫端不能指定；回應一定帶 `resolution` 與 `queryMs`。
+
+| 端點 | 說明 |
+|---|---|
+| `GET /replay?cabinetId&at` | 該機櫃每台裝置在包含 `at` 的那一桶的讀數（avg／min／max／count）與當時未解除的告警。15 分鐘內讀原始表現場聚合、30 天內讀分鐘層、更久讀小時層（保留五年）。`hadData` 只代表那一桶有沒有讀數，不代表在線——上下線狀態沒有歷史 |
+| `GET /replay/timeline?cabinetId&from&to` | 這段期間內該機櫃曾經在響的告警，最多 1000 則（`truncated` 會說），畫在時間軸上當標記 |
+
+未來的時間點視為現在；早於五年回 400；機櫃不存在回 404。
+
 ## 實作狀態（2026-09-09）
 
 契約先於實作寫定，這張表說明「現在哪些端點真的在」。全部端點已實作並以 curl 逐一驗證，
@@ -247,6 +258,7 @@ REST 帶 `Authorization: Bearer <token>`；WebSocket 帶 `?token=<token>`（瀏�
 | `GET/POST /cabinets` | ✅ `id` 就是機櫃 `code`（前端拿它當顯示名稱與 `Device.cabinetId` 的關聯鍵）；資料表的數值 id 不外露 |
 | `GET/POST /alarm-rules` | ✅ 綁機型（`modelCode`）或綁裝置（`deviceId`）擇一；裝置規則以指標為單位取代機型規則（ADR-0006），建立時一併解除被取代的告警。建立前以 `AlarmRule.isMeaningfulFor` 擋掉門檻落在量程外的規則 |
 | `POST /auth/login`、`/auth/me`、`GET/POST /users`、`GET /audit` | ✅ 見「登入與權限」 |
+| `GET /replay`、`GET /replay/timeline` | ✅ 兩年前的一小時桶與三分鐘前的原始表一樣快（見 performance.md） |
 | `GET /alarms?state&deviceId&limit` | ✅ 一次 join 裝置與規則；FIRING 排前、再依觸發時間新到舊；`limit` 上限 500 |
 
 ### 回應形狀上的取捨
