@@ -23,7 +23,7 @@ public class AlarmQueryRepository {
 
     public record Row(long alarmId, String deviceId, String deviceName, String cabinetCode, String metric,
                       String severity, String state, String message, Double value, double threshold,
-                      Instant firedAt, Instant resolvedAt) {
+                      Instant firedAt, Instant resolvedAt, Instant acknowledgedAt, String acknowledgedBy) {
     }
 
     /**
@@ -34,7 +34,8 @@ public class AlarmQueryRepository {
     public List<Row> list(String state, String deviceId, Integer limit) {
         StringBuilder sql = new StringBuilder("""
                 SELECT a.id, d.device_id, d.serial_no, c.code AS cabinet_code, r.metric_key, a.severity, a.state,
-                       r.name AS rule_name, a.trigger_value, r.threshold, a.fired_at, a.resolved_at
+                       r.name AS rule_name, a.trigger_value, r.threshold, a.fired_at, a.resolved_at,
+                       a.acknowledged_at, a.acknowledged_by
                 FROM alarm a
                 JOIN device d ON d.id = a.device_id
                 LEFT JOIN cabinet c ON c.id = d.cabinet_id
@@ -50,8 +51,8 @@ public class AlarmQueryRepository {
             sql.append(" AND d.device_id = ?");
             args.add(deviceId.trim());
         }
-        // 未解除的排前面，再依觸發時間新到舊：值班的人要先看到還在響的
-        sql.append(" ORDER BY (a.state = 'FIRING') DESC, a.fired_at DESC LIMIT ?");
+        // 還在響的排最前，其中沒有人認領的又更前；同組再依觸發時間新到舊
+        sql.append(" ORDER BY (a.state = 'FIRING') DESC, (a.acknowledged_at IS NULL) DESC, a.fired_at DESC LIMIT ?");
         int effective = limit == null || limit <= 0 ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT);
         args.add(effective);
 
@@ -59,6 +60,7 @@ public class AlarmQueryRepository {
                 rs.getString("serial_no"), rs.getString("cabinet_code"), rs.getString("metric_key"),
                 rs.getString("severity"), rs.getString("state"), rs.getString("rule_name"),
                 Rows.nullableDouble(rs, "trigger_value"), rs.getDouble("threshold"),
-                Rows.instant(rs, "fired_at"), Rows.instant(rs, "resolved_at")), args.toArray());
+                Rows.instant(rs, "fired_at"), Rows.instant(rs, "resolved_at"),
+                Rows.instant(rs, "acknowledged_at"), rs.getString("acknowledged_by")), args.toArray());
     }
 }

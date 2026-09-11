@@ -192,7 +192,7 @@ export function DeviceDetail() {
         {alarms.loading ? (
           <p className="empty">載入中…</p>
         ) : (
-          <AlarmTable alarms={alarms.data ?? []} showDevice={false} emptyText="這台裝置沒有告警紀錄" />
+          <AlarmTable alarms={alarms.data ?? []} showDevice={false} emptyText="這台裝置沒有告警紀錄" onChanged={alarms.reload} />
         )}
       </section>
     </div>

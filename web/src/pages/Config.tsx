@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { messageOf } from '../api/client';
 import type {
+  AlarmRule,
   AlarmSeverity,
   AuditEntry,
   CabinetType,
@@ -13,6 +14,7 @@ import type {
   MetricDefinition,
   RegisterDeviceRequest,
   Role,
+  UpdateAlarmRuleRequest,
 } from '../api/types';
 import { can, ROLE_LABEL, useSession } from '../auth/session';
 import { Feedback, Gate, useSubmit } from '../components/forms';
@@ -557,6 +559,7 @@ function describeCondition(rule: {
 function RulesPanel() {
   const rules = useAsync(() => api.listAlarmRules(), []);
   const models = useAsync(() => api.listModels(), []);
+  const [editing, setEditing] = useState<AlarmRule | null>(null);
 
   return (
     <div className="split">
@@ -577,6 +580,7 @@ function RulesPanel() {
                 <th className="num">持續</th>
                 <th>嚴重度</th>
                 <th>狀態</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -599,6 +603,13 @@ function RulesPanel() {
                     <span className={`sev sev-${r.severity}`}>{SEVERITY_LABEL[r.severity]}</span>
                   </td>
                   <td>{r.enabled ? '啟用' : '停用'}</td>
+                  <td>
+                    <Gate action="configure">
+                      <button type="button" className="btn" onClick={() => setEditing(r)}>
+                        修改
+                      </button>
+                    </Gate>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -609,13 +620,149 @@ function RulesPanel() {
 
       <section className="panel">
         <header className="panel-head">
-          <h2>新增告警規則</h2>
+          <h2>{editing ? `修改規則 #${editing.id}` : '新增告警規則'}</h2>
+          {editing && (
+            <button type="button" className="btn" onClick={() => setEditing(null)}>
+              取消
+            </button>
+          )}
         </header>
         <Gate action="configure">
-          <RuleForm models={models.data ?? []} onCreated={rules.reload} />
+          {editing ? (
+            <RuleEditForm
+              rule={editing}
+              onDone={() => {
+                setEditing(null);
+                rules.reload();
+              }}
+            />
+          ) : (
+            <RuleForm models={models.data ?? []} onCreated={rules.reload} />
+          )}
         </Gate>
       </section>
     </div>
+  );
+}
+
+/**
+ * 改門檻、持續時間、嚴重度、名稱與啟用。範圍、指標與比較方式不能改——
+ * 那等於換一條規則卻沿用同一份告警歷史（見 contracts.md）。
+ */
+function RuleEditForm({ rule, onDone }: { rule: AlarmRule; onDone(): void }) {
+  const [form, setForm] = useState<UpdateAlarmRuleRequest>({
+    name: rule.name,
+    threshold: rule.threshold,
+    secondaryValue: rule.secondaryValue ?? null,
+    durationSeconds: rule.durationSeconds,
+    severity: rule.severity,
+    enabled: rule.enabled,
+  });
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const { busy, ok, error, submit } = useSubmit(
+    () => api.updateAlarmRule(rule.id, form),
+    (saved) => `已更新規則 #${saved.id}，這條規則還在響的告警已一併解除`,
+  );
+
+  async function remove() {
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      await api.deleteAlarmRule(rule.id);
+      onDone();
+    } catch (err) {
+      setRemoveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  return (
+    <form
+      className="form"
+      onSubmit={async (e) => {
+        await submit(e);
+        onDone();
+      }}
+    >
+      <p className="field-note mono">{describeCondition(rule)}（範圍與指標不可修改）</p>
+      <label className="field">
+        <span>規則名稱</span>
+        <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+      </label>
+      <label className="field">
+        <span>門檻</span>
+        <input
+          className="input"
+          type="number"
+          step="any"
+          value={form.threshold}
+          onChange={(e) => setForm({ ...form, threshold: Number(e.target.value) })}
+        />
+      </label>
+      {rule.comparison === 'OUT_OF_RANGE' && (
+        <label className="field">
+          <span>區間另一端</span>
+          <input
+            className="input"
+            type="number"
+            step="any"
+            value={form.secondaryValue ?? ''}
+            onChange={(e) =>
+              setForm({ ...form, secondaryValue: e.target.value === '' ? null : Number(e.target.value) })
+            }
+          />
+        </label>
+      )}
+      <label className="field">
+        <span>持續秒數</span>
+        <input
+          className="input"
+          type="number"
+          min={0}
+          value={form.durationSeconds}
+          onChange={(e) => setForm({ ...form, durationSeconds: Number(e.target.value) })}
+        />
+      </label>
+      <label className="field">
+        <span>嚴重度</span>
+        <select
+          className="input"
+          value={form.severity}
+          onChange={(e) => setForm({ ...form, severity: e.target.value as AlarmSeverity })}
+        >
+          {(Object.keys(SEVERITY_LABEL) as AlarmSeverity[]).map((sev) => (
+            <option key={sev} value={sev}>
+              {SEVERITY_LABEL[sev]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field checkbox">
+        <input
+          type="checkbox"
+          checked={form.enabled}
+          onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
+        />
+        <span>啟用</span>
+      </label>
+      <div className="btn-row">
+        <button className="btn btn-primary" type="submit" disabled={busy}>
+          {busy ? '儲存中…' : '儲存'}
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={removing}
+          title="有告警紀錄的規則不能刪，後端會擋下來並要你改成停用"
+          onClick={remove}
+        >
+          {removing ? '刪除中…' : '刪除'}
+        </button>
+      </div>
+      <Feedback ok={ok} error={error ?? removeError} />
+    </form>
   );
 }
 

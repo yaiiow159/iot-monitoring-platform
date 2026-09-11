@@ -96,6 +96,8 @@ export function Tree() {
   const [bubbling, setBubbling] = useState<Record<number, number>>({});
   const [moving, setMoving] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
+  // 間隔用盡時記下要重編的是哪一層（undefined＝沒有這個問題，null＝根層）
+  const [needsRenumber, setNeedsRenumber] = useState<number | null | undefined>(undefined);
 
   const tree = useAsync(() => api.getTree(), []);
   useEffect(() => {
@@ -170,6 +172,26 @@ export function Tree() {
     setExpanded(new Set(all));
   };
 
+  /** 重新編號只動 sortOrder，顯示順序不變；重抓那一層讓後端說了算。 */
+  const renumber = async (parentId: number | null) => {
+    setMoving(true);
+    setMoveError(null);
+    try {
+      await api.renumberNodes(parentId);
+      setNeedsRenumber(undefined);
+      if (parentId === null) {
+        setRoots(await api.getTree());
+      } else {
+        const subtree = await api.getSubtree(parentId);
+        setRoots((prev) => (prev ? replaceNode(prev, subtree) : prev));
+      }
+    } catch (err) {
+      setMoveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setMoving(false);
+    }
+  };
+
   const selected = roots && selectedId !== null ? findNode(roots, selectedId) : null;
   const parent = roots && selectedId !== null ? findParent(roots, selectedId) : undefined;
   // 兄弟陣列直接拿 API 回傳的 children（或根清單）：順序是後端的保證。
@@ -191,13 +213,15 @@ export function Tree() {
     } else {
       const gap = Math.abs(beyond.sortOrder - neighbour.sortOrder);
       if (gap < 2) {
-        setMoveError('這一層的排序間隔已用盡，需要後端重新編號後才能再插入。');
+        setMoveError('這一層的排序間隔已用盡，重新編號之後就能繼續調整。');
+        setNeedsRenumber(parent ? parent.id : null);
         return;
       }
       sortOrder = neighbour.sortOrder + dir * Math.floor(gap / 2);
     }
     setMoving(true);
     setMoveError(null);
+    setNeedsRenumber(undefined);
     try {
       await api.reorderNode(selected.id, sortOrder);
       if (parent) {
@@ -332,6 +356,8 @@ export function Tree() {
           canMoveDown={siblingIndex >= 0 && siblingIndex < siblings.length - 1}
           moving={moving}
           moveError={moveError}
+          needsRenumber={needsRenumber}
+          onRenumber={renumber}
           onMove={move}
           onSelect={setSelectedId}
           canEdit={canEdit}
@@ -449,13 +475,17 @@ interface DetailProps {
   canMoveDown: boolean;
   moving: boolean;
   moveError: string | null;
+  /** undefined＝間隔還夠；null＝要重編根層；數字＝要重編這個父節點底下那一層 */
+  needsRenumber: number | null | undefined;
+  onRenumber(parentId: number | null): void;
   onMove(dir: -1 | 1): void;
   onSelect(id: number): void;
   canEdit: boolean;
   onCreated(created: TreeNode, parentId: number | null): Promise<void>;
 }
 
-function NodeDetail({ node, roots, canMoveUp, canMoveDown, moving, moveError, onMove, onSelect, canEdit, onCreated }: DetailProps) {
+function NodeDetail({ node, roots, canMoveUp, canMoveDown, moving, moveError, needsRenumber, onRenumber,
+                     onMove, onSelect, canEdit, onCreated }: DetailProps) {
   const nodeId = node?.id ?? null;
   const ancestors = useAsync(
     () => (nodeId === null ? Promise.resolve([] as TreePathNode[]) : api.getAncestors(nodeId)),
@@ -565,6 +595,11 @@ function NodeDetail({ node, roots, canMoveUp, canMoveDown, moving, moveError, on
         <span className="hint">同層順序由後端依 (sortOrder, id) 決定，這裡只送新的 sortOrder。</span>
       </div>
       {moveError && <p className="error">{moveError}</p>}
+      {needsRenumber !== undefined && (
+        <button className="btn" disabled={moving} onClick={() => onRenumber(needsRenumber)}>
+          {moving ? '重新編號中…' : '重新編號這一層'}
+        </button>
+      )}
 
       {node.kind === 'DEVICE' && node.deviceId && (
         <div className="tree-section">
@@ -578,7 +613,12 @@ function NodeDetail({ node, roots, canMoveUp, canMoveDown, moving, moveError, on
           {deviceAlarms.loading ? (
             <p className="empty">載入中…</p>
           ) : (
-            <AlarmTable alarms={deviceAlarms.data ?? []} showDevice={false} emptyText="這台裝置目前沒有未解除告警" />
+            <AlarmTable
+              alarms={deviceAlarms.data ?? []}
+              showDevice={false}
+              emptyText="這台裝置目前沒有未解除告警"
+              onChanged={deviceAlarms.reload}
+            />
           )}
         </div>
       )}

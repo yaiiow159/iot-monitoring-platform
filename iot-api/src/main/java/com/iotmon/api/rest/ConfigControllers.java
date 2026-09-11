@@ -11,6 +11,7 @@ import com.iotmon.domain.model.MetricDefinition;
 import com.iotmon.domain.model.MetricKey;
 import com.iotmon.domain.model.ModelCode;
 import com.iotmon.infrastructure.alarm.AlarmEngineConsumer;
+import com.iotmon.infrastructure.alarm.AlarmRepository;
 import com.iotmon.infrastructure.alarm.AlarmRuleRepository;
 import com.iotmon.infrastructure.persistence.CatalogRepository;
 import com.iotmon.infrastructure.persistence.DeviceRepository;
@@ -125,13 +126,15 @@ public final class ConfigControllers {
         private final CatalogRepository catalog;
         private final DeviceRepository devices;
         private final AlarmEngineConsumer engine;
+        private final AlarmRepository alarms;
 
         public AlarmRuleController(AlarmRuleRepository rules, CatalogRepository catalog, DeviceRepository devices,
-                                   AlarmEngineConsumer engine) {
+                                   AlarmEngineConsumer engine, AlarmRepository alarms) {
             this.rules = rules;
             this.catalog = catalog;
             this.devices = devices;
             this.engine = engine;
+            this.alarms = alarms;
         }
 
         @GetMapping
@@ -178,9 +181,76 @@ public final class ConfigControllers {
             return RuleResponse.from(saved);
         }
 
+        /**
+         * 改門檻、持續時間、嚴重度、名稱與啟用。範圍與指標不能改——那等於換一條規則，
+         * 卻沿用同一份告警歷史；要換範圍就停用舊的、新增一條。
+         *
+         * <p>改完一定要把這條規則還在響的告警解除並清掉累積計時，
+         * 否則亮著的是用舊門檻算出來的結果，而新門檻可能根本不成立。
+         */
+        @PatchMapping("/{id}")
+        public RuleResponse update(@PathVariable long id, @RequestBody UpdateRuleRequest request) {
+            AlarmRule existing = rules.findById(id)
+                    .orElseThrow(() -> ApiException.notFound("規則不存在：" + id));
+            AlarmSeverity severity = Params.enumOf(AlarmSeverity.class, request.severity(), "嚴重度");
+            Duration sustained = Duration.ofSeconds(request.durationSeconds());
+
+            DeviceModel model = modelOf(existing);
+            MetricDefinition definition = model.metric(existing.metric())
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "機型 " + model.code() + " 沒有指標 " + existing.metric()));
+            AlarmRule candidate = existing.deviceId().isPresent()
+                    ? AlarmRule.forDevice(id, request.name(), existing.deviceId().get(), existing.metric(),
+                    existing.comparison(), request.threshold(), request.secondaryValue(), severity,
+                    sustained, request.enabled())
+                    : AlarmRule.forModel(id, request.name(), existing.modelCode().orElseThrow(), existing.metric(),
+                    existing.comparison(), request.threshold(), request.secondaryValue(), severity,
+                    sustained, request.enabled());
+            if (!candidate.isMeaningfulFor(definition)) {
+                throw new IllegalArgumentException("門檻 " + request.threshold() + " 超出指標 " + existing.metric()
+                        + " 的量程 [" + definition.minValue() + ", " + definition.maxValue() + "]，這條規則永遠不會觸發");
+            }
+
+            rules.update(id, request.name(), request.threshold(), request.secondaryValue(), severity,
+                    sustained, request.enabled());
+            engine.ruleChanged(id);
+            return RuleResponse.from(candidate);
+        }
+
+        /**
+         * 刪規則。有告警歷史的不讓刪：外鍵是 ON DELETE CASCADE，刪下去會把那些紀錄一起帶走，
+         * 而「這條規則過去響過幾次」正是事後檢討要看的東西。要停用就把 enabled 改掉。
+         */
+        @DeleteMapping("/{id}")
+        @ResponseStatus(HttpStatus.NO_CONTENT)
+        public void delete(@PathVariable long id) {
+            rules.findById(id).orElseThrow(() -> ApiException.notFound("規則不存在：" + id));
+            long history = alarms.countAlarmsOf(id);
+            if (history > 0) {
+                throw ApiException.conflict("這條規則有 " + history
+                        + " 筆告警紀錄，刪除會連紀錄一起消失。請改成停用（enabled = false）");
+            }
+            engine.ruleChanged(id);
+            rules.delete(id);
+        }
+
+        /** 規則的量程檢查要靠機型：綁裝置的規則得先從裝置找回它的機型 */
+        private DeviceModel modelOf(AlarmRule rule) {
+            ModelCode code = rule.modelCode().orElseGet(() -> ModelCode.of(
+                    devices.find(rule.deviceId().orElseThrow())
+                            .orElseThrow(() -> new IllegalArgumentException("裝置不存在")).modelCode()));
+            return catalog.findModel(code)
+                    .orElseThrow(() -> new IllegalArgumentException("機型不存在：" + code));
+        }
+
         public record RuleRequest(String name, String modelCode, String deviceId, String metric, String comparison,
                                   double threshold, Double secondaryValue, int durationSeconds,
                                   String severity, boolean enabled) {
+        }
+
+        /** 只有這幾個欄位能改；範圍、指標與比較方式不在裡面是刻意的 */
+        public record UpdateRuleRequest(String name, double threshold, Double secondaryValue,
+                                        int durationSeconds, String severity, boolean enabled) {
         }
     }
 

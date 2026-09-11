@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.Collection;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.Map;
@@ -177,6 +178,29 @@ public class MonitoringTreeRepository {
                 ? jdbc.queryForObject("SELECT max(sort_order) FROM monitoring_node WHERE parent_id IS NULL", Long.class)
                 : jdbc.queryForObject("SELECT max(sort_order) FROM monitoring_node WHERE parent_id = ?", Long.class, parentId);
         return (max == null ? 0 : max) + TreeNode.ORDER_GAP;
+    }
+
+    /**
+     * 把這一層的 sort_order 重寫成等間隔，顯示順序不變。
+     * 反覆在同一處插入會把間隔用完，前端連「上移一格」都算不出新值，這是唯一的出口。
+     *
+     * @param parentId null 代表根節點那一層
+     */
+    public int renumber(Long parentId) {
+        String scope = parentId == null ? "parent_id IS NULL" : "parent_id = ?";
+        Object[] args = parentId == null ? new Object[0] : new Object[]{parentId};
+        List<Long> ordered = jdbc.query(
+                "SELECT id FROM monitoring_node WHERE " + scope + " ORDER BY sort_order, id",
+                (rs, i) -> rs.getLong(1), args);
+        if (ordered.isEmpty()) {
+            return 0;
+        }
+        List<Object[]> batch = new ArrayList<>(ordered.size());
+        for (int i = 0; i < ordered.size(); i++) {
+            batch.add(new Object[]{(i + 1L) * TreeNode.ORDER_GAP, ordered.get(i)});
+        }
+        jdbc.batchUpdate("UPDATE monitoring_node SET sort_order = ? WHERE id = ?", batch);
+        return ordered.size();
     }
 
     public boolean updateSortOrder(long nodeId, long sortOrder) {

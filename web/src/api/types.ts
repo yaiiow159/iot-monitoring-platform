@@ -12,6 +12,12 @@ export type AlarmSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
 
 export type AlarmState = 'FIRING' | 'RESOLVED';
 
+/**
+ * 推播訊息用的狀態。多一個 ACKED——認可不改變資料列的 state，
+ * 但畫面要知道「已經有人接手」，否則兩個人會同時去看同一則。
+ */
+export type LiveAlarmState = AlarmState | 'ACKED';
+
 /** 契約規定回應一定帶這個欄位，前端也一定要顯示，否則使用者分不出原始值與聚合值。 */
 export type Resolution = 'raw' | '1m' | '1h';
 
@@ -139,6 +145,16 @@ export interface AlarmRule {
   enabled: boolean;
 }
 
+/** 可改的欄位：範圍（機型／裝置）、指標與比較方式不在裡面是刻意的，見 contracts.md。 */
+export interface UpdateAlarmRuleRequest {
+  name: string;
+  threshold: number;
+  secondaryValue?: number | null;
+  durationSeconds: number;
+  severity: AlarmSeverity;
+  enabled: boolean;
+}
+
 export interface CreateAlarmRuleRequest {
   name: string;
   modelCode?: string | null;
@@ -176,6 +192,9 @@ export interface Alarm {
   threshold: number;
   firedAt: string;
   resolvedAt: string | null;
+  /** 有人接手的時間；null 代表還沒有人認領。state 不會因為認可而改變。 */
+  acknowledgedAt: string | null;
+  acknowledgedBy: string | null;
 }
 
 /**
@@ -332,13 +351,19 @@ export interface LiveAlarmEvent {
   alarmId: number;
   deviceId: string;
   severity: AlarmSeverity;
-  state: AlarmState;
+  state: LiveAlarmState;
   ts: number;
   /**
    * 監控樹上從根到該裝置節點的路徑（由上到下，含裝置節點本身）。
    * 前端據此重抓整條鏈的 rollup，而不是只更新葉節點；裝置不在樹上時為空陣列。
    */
   ancestorIds: number[];
+}
+
+export interface AlarmAction {
+  alarmId: number;
+  state: LiveAlarmState;
+  by: string;
 }
 
 export type LiveEvent = LiveTelemetryEvent | LiveStatusEvent | LiveAlarmEvent;
@@ -383,8 +408,14 @@ export interface IotApi {
   getDevice(deviceId: string): Promise<Device | null>;
   registerDevice(request: RegisterDeviceRequest): Promise<Device>;
   listAlarms(params?: { state?: AlarmState; deviceId?: string; limit?: number }): Promise<Alarm[]>;
+  /** 認可：state 不變，只記下是誰接手的。 */
+  acknowledgeAlarm(alarmId: number): Promise<AlarmAction>;
+  /** 人工解除這一則。條件還在的話它會重新累積、再響一次。 */
+  resolveAlarm(alarmId: number): Promise<AlarmAction>;
   listAlarmRules(): Promise<AlarmRule[]>;
   createAlarmRule(rule: CreateAlarmRuleRequest): Promise<AlarmRule>;
+  updateAlarmRule(id: number, rule: UpdateAlarmRuleRequest): Promise<AlarmRule>;
+  deleteAlarmRule(id: number): Promise<void>;
   queryTelemetry(query: TelemetryQuery): Promise<TelemetrySeries>;
   /** 整棵樹的根節點清單（每個 Equipment 一棵），已排序、含 rollup。 */
   getTree(): Promise<TreeNode[]>;
@@ -393,6 +424,8 @@ export interface IotApi {
   getAncestors(nodeId: number): Promise<TreePathNode[]>;
   createNode(request: CreateNodeRequest): Promise<TreeNode>;
   reorderNode(nodeId: number, sortOrder: number): Promise<TreeNode>;
+  /** 同層重新編號，順序不變。parentId 為 null 是根層。 */
+  renumberNodes(parentId: number | null): Promise<{ parentId: number | null; renumbered: number }>;
   /** 某個機櫃在某一刻的讀數與告警；後端依時間點的年齡決定讀哪一層。 */
   getReplay(cabinetId: string, at: string): Promise<ReplaySnapshot>;
   getReplayTimeline(cabinetId: string, from: string, to: string): Promise<ReplayTimeline>;

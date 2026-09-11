@@ -97,6 +97,19 @@ public class AlarmEvaluator {
         }
     }
 
+    /**
+     * 規則被停用、刪除或改過門檻時，清掉它在所有裝置上的累積狀態。
+     *
+     * <p>不清的話，改完門檻的第一筆讀數會沿用舊規則累積到一半的計時。
+     */
+    public void forgetRules(Collection<Long> ruleIds) {
+        if (ruleIds.isEmpty()) {
+            return;
+        }
+        Set<Long> targets = Set.copyOf(ruleIds);
+        breachStartedAt.keySet().removeIf(key -> targets.contains(key.ruleId()));
+    }
+
     public int trackedBreaches() {
         return breachStartedAt.size();
     }

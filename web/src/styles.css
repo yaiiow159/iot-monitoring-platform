@@ -2513,3 +2513,19 @@ tr.audit-DENIED td:first-child {
     animation: none;
   }
 }
+
+/* ------------------------------------------------------------ 按鈕組 */
+
+/* 表單底部與表格列裡的一排按鈕。.panel-tools 有 margin-left:auto，那是給面板標題列用的。 */
+.btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* 表格列內的按鈕小一號，否則一整欄按鈕會把每一列撐高 */
+td.btn-row .btn {
+  padding: 3px 9px;
+  font-size: var(--fs-caption);
+}

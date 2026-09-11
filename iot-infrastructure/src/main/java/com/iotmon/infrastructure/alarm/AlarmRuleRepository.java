@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -85,6 +86,37 @@ public class AlarmRuleRepository {
                 rule.threshold(), rule.secondaryValue().orElse(null), rule.severity(), rule.sustainedFor(), rule.enabled())
                 : AlarmRule.forModel(id, rule.name(), rule.modelCode().orElseThrow(), rule.metric(), rule.comparison(),
                 rule.threshold(), rule.secondaryValue().orElse(null), rule.severity(), rule.sustainedFor(), rule.enabled());
+    }
+
+    public Optional<AlarmRule> findById(long id) {
+        return jdbc.query(SELECT + " WHERE r.id = ?",
+                (ResultSet rs) -> rs.next() ? Optional.of(mapRule(rs)) : Optional.<AlarmRule>empty(), id);
+    }
+
+    /**
+     * 可改的只有門檻、持續時間、嚴重度、名稱與啟用與否。
+     *
+     * <p>範圍（機型／裝置）與指標不能改：那等於換了一條規則，卻沿用同一份告警歷史。
+     * 要換範圍就停用舊的、新增一條。
+     */
+    public boolean update(long id, String name, double threshold, Double secondaryValue,
+                          AlarmSeverity severity, Duration sustainedFor, boolean enabled) {
+        int updated = jdbc.update("""
+                UPDATE alarm_rule
+                   SET name = ?, threshold = ?, secondary_value = ?, severity = ?,
+                       duration_seconds = ?, enabled = ?
+                 WHERE id = ?
+                """,
+                name, threshold, secondaryValue, severity.name(), (int) sustainedFor.toSeconds(), enabled, id);
+        snapshot.set(null);
+        return updated > 0;
+    }
+
+    /** @return 真的刪掉了才是 true */
+    public boolean delete(long id) {
+        int deleted = jdbc.update("DELETE FROM alarm_rule WHERE id = ?", id);
+        snapshot.set(null);
+        return deleted > 0;
     }
 
     private static AlarmRule mapRule(ResultSet rs) throws SQLException {

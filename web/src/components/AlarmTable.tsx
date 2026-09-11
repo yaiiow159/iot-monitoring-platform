@@ -1,5 +1,7 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { api } from '../api';
+import { can, useSession } from '../auth/session';
 import type { Alarm } from '../api/types';
 import { SEVERITY_LABEL, formatNumber, formatRelative, formatTime } from '../utils/format';
 
@@ -8,9 +10,29 @@ interface Props {
   /** 裝置詳情頁已經知道是哪台裝置了，重複一欄只是浪費寬度。 */
   showDevice?: boolean;
   emptyText?: string;
+  /** 有給就長出操作欄（認可／解除），動作完成後呼叫它重抓。唯讀角色仍然看不到按鈕。 */
+  onChanged?: () => void;
 }
 
-export function AlarmTable({ alarms, showDevice = true, emptyText = '目前沒有告警' }: Props) {
+export function AlarmTable({ alarms, showDevice = true, emptyText = '目前沒有告警', onChanged }: Props) {
+  const session = useSession();
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const showActions = !!onChanged && can(session?.user, 'operate');
+
+  async function run(alarmId: number, action: 'ack' | 'resolve') {
+    setBusyId(alarmId);
+    setError(null);
+    try {
+      await (action === 'ack' ? api.acknowledgeAlarm(alarmId) : api.resolveAlarm(alarmId));
+      onChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   // 記住已經顯示過的告警：只有「這次才出現」的列才做一次入場動畫，初次載入不閃。
   const seen = useRef<Set<number> | null>(null);
   const isFirstRender = seen.current === null;
@@ -23,6 +45,12 @@ export function AlarmTable({ alarms, showDevice = true, emptyText = '目前沒�
 
   return (
     <div className="table-scroll">
+      {error && (
+        <p className="error" role="alert">
+          <span className="caption">後端拒絕</span>
+          {error}
+        </p>
+      )}
       <table className="data-table">
         <thead>
           <tr>
@@ -34,6 +62,7 @@ export function AlarmTable({ alarms, showDevice = true, emptyText = '目前沒�
             <th>說明</th>
             <th>觸發時間</th>
             <th>狀態</th>
+            {showActions && <th>操作</th>}
           </tr>
         </thead>
         <tbody>
@@ -62,9 +91,40 @@ export function AlarmTable({ alarms, showDevice = true, emptyText = '目前沒�
                 </td>
                 <td>
                   <span className={`state state-${a.state}`}>
-                    {a.state === 'FIRING' ? '未解除' : '已解除'}
+                    {a.state === 'RESOLVED' ? '已解除' : a.acknowledgedAt ? '處理中' : '未解除'}
                   </span>
+                  {a.acknowledgedBy && a.state === 'FIRING' && (
+                    <span className="sub" title={formatTime(a.acknowledgedAt!)}>
+                      {' '}
+                      {a.acknowledgedBy}
+                    </span>
+                  )}
                 </td>
+                {showActions && (
+                  <td className="btn-row">
+                    {a.state === 'FIRING' && !a.acknowledgedAt && (
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={busyId === a.alarmId}
+                        onClick={() => run(a.alarmId, 'ack')}
+                      >
+                        認可
+                      </button>
+                    )}
+                    {a.state === 'FIRING' && (
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={busyId === a.alarmId}
+                        title="條件若仍成立，滿足持續時間後還會再響一次"
+                        onClick={() => run(a.alarmId, 'resolve')}
+                      >
+                        解除
+                      </button>
+                    )}
+                  </td>
+                )}
               </tr>
             );
           })}

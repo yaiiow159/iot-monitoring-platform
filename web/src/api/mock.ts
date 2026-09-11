@@ -215,6 +215,13 @@ function makeAlarm(
     threshold: Number(threshold.toFixed(2)),
     firedAt: new Date(firedAt).toISOString(),
     resolvedAt: state === 'RESOLVED' ? new Date(firedAt + 900_000).toISOString() : null,
+    // 少數幾則已經有人接手，畫面才看得到兩種樣子
+    acknowledgedAt:
+      state === 'FIRING' && hash(`${device.deviceId}:ack:${ageMs}`) < 0.25
+        ? new Date(firedAt + 120_000).toISOString()
+        : null,
+    acknowledgedBy:
+      state === 'FIRING' && hash(`${device.deviceId}:ack:${ageMs}`) < 0.25 ? 'operator' : null,
   };
 }
 
@@ -862,13 +869,36 @@ export const mockApi: IotApi = {
     return alarms
       .filter((a) => !params.state || a.state === params.state)
       .filter((a) => !params.deviceId || a.deviceId === params.deviceId)
+      // 與後端同一套：還在響的最前、其中未認可的更前、再依觸發時間新到舊
       .sort(
         (a, b) =>
+          Number(b.state === 'FIRING') - Number(a.state === 'FIRING') ||
+          Number(!b.acknowledgedAt) - Number(!a.acknowledgedAt) ||
           SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
           Date.parse(b.firedAt) - Date.parse(a.firedAt),
       )
       .slice(0, params.limit ?? 200)
       .map((a) => ({ ...a }));
+  },
+
+  async acknowledgeAlarm(alarmId: number) {
+    await delay(90);
+    const alarm = alarms.find((a) => a.alarmId === alarmId);
+    if (!alarm || alarm.state !== 'FIRING' || alarm.acknowledgedAt) {
+      throw new Error('這則告警不存在、已經解除，或已經有人認可過了');
+    }
+    alarm.acknowledgedAt = new Date().toISOString();
+    alarm.acknowledgedBy = 'mock-user';
+    return { alarmId, state: 'ACKED' as const, by: 'mock-user' };
+  },
+
+  async resolveAlarm(alarmId: number) {
+    await delay(90);
+    const alarm = alarms.find((a) => a.alarmId === alarmId);
+    if (!alarm || alarm.state !== 'FIRING') throw new Error('這則告警不存在，或早就已經解除');
+    alarm.state = 'RESOLVED';
+    alarm.resolvedAt = new Date().toISOString();
+    return { alarmId, state: 'RESOLVED' as const, by: 'mock-user' };
   },
 
   async listAlarmRules() {
@@ -887,6 +917,26 @@ export const mockApi: IotApi = {
     };
     alarmRules.push(created);
     return created;
+  },
+
+  async updateAlarmRule(id, patch) {
+    await delay(110);
+    const rule = alarmRules.find((r) => r.id === id);
+    if (!rule) throw new Error(`規則不存在：${id}`);
+    Object.assign(rule, patch, { secondaryValue: patch.secondaryValue ?? null });
+    return { ...rule };
+  },
+
+  async deleteAlarmRule(id) {
+    await delay(110);
+    const index = alarmRules.findIndex((r) => r.id === id);
+    if (index < 0) throw new Error(`規則不存在：${id}`);
+    // 與後端同一條規矩：有告警紀錄就不讓刪，否則紀錄會跟著 CASCADE 消失
+    const history = alarms.filter((a) => a.metric === alarmRules[index].metric).length;
+    if (history > 0) {
+      throw new Error(`這條規則有 ${history} 筆告警紀錄，刪除會連紀錄一起消失。請改成停用（enabled = false）`);
+    }
+    alarmRules.splice(index, 1);
   },
 
   async createCabinet(request) {
@@ -1015,6 +1065,17 @@ export const mockApi: IotApi = {
     if (!node) throw new Error(`找不到節點 ${nodeId}`);
     node.sortOrder = sortOrder;
     return materialize(node, firingIndex());
+  },
+
+  async renumberNodes(parentId: number | null) {
+    await delay(120);
+    const level = treeNodes
+      .filter((n) => (n.parentId ?? null) === parentId)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    level.forEach((n, i) => {
+      n.sortOrder = (i + 1) * 1000;
+    });
+    return { parentId, renumbered: level.length };
   },
 
   async getReplay(cabinetId, at) {

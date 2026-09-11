@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { api } from '../api';
-import type { AlarmSeverity, AlarmState, DeviceStatus, LiveEvent, LiveSocket } from '../api/types';
+import type { AlarmSeverity, DeviceStatus, LiveAlarmState, LiveEvent, LiveSocket } from '../api/types';
 
 export type ConnectionState = 'connecting' | 'open' | 'closed';
 
@@ -22,7 +22,8 @@ export interface LiveAlarmNotice {
   alarmId: number;
   deviceId: string;
   severity: AlarmSeverity;
-  state: AlarmState;
+  /** ACKED 代表有人接手了，但條件還成立——資料列的 state 仍是 FIRING。 */
+  state: LiveAlarmState;
   ts: number;
   /** 監控樹從根到裝置節點的路徑（由上到下）；空陣列代表裝置不在樹上。 */
   ancestorIds: number[];

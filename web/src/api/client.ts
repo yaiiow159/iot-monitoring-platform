@@ -1,6 +1,7 @@
 import { clearSession, getToken } from '../auth/session';
 import type {
   Alarm,
+  AlarmAction,
   AlarmRule,
   AlarmState,
   AppUser,
@@ -28,6 +29,7 @@ import type {
   TelemetrySeries,
   TreeNode,
   TreePathNode,
+  UpdateAlarmRuleRequest,
 } from './types';
 
 /** 留空時走 vite dev proxy 的相對路徑，免得開發與正式各記一組網址。 */
@@ -202,10 +204,31 @@ export const httpApi: IotApi = {
       `/alarms${qs({ state: params.state, deviceId: params.deviceId, limit: params.limit })}`,
     ),
 
+  acknowledgeAlarm: (alarmId: number) =>
+    request<AlarmAction>(`/alarms/${alarmId}/ack`, { method: 'POST' }),
+
+  resolveAlarm: (alarmId: number) =>
+    request<AlarmAction>(`/alarms/${alarmId}/resolve`, { method: 'POST' }),
+
   listAlarmRules: () => request<AlarmRule[]>('/alarm-rules'),
 
   createAlarmRule: (rule: CreateAlarmRuleRequest) =>
     request<AlarmRule>('/alarm-rules', { method: 'POST', body: JSON.stringify(rule) }),
+
+  updateAlarmRule: (id: number, rule: UpdateAlarmRuleRequest) =>
+    request<AlarmRule>(`/alarm-rules/${id}`, { method: 'PATCH', body: JSON.stringify(rule) }),
+
+  /** 204 沒有內容，不能走 request()——它會去 res.json() 然後炸掉 */
+  async deleteAlarmRule(id: number) {
+    const res = await fetch(`${API_BASE}/alarm-rules/${id}`, {
+      method: 'DELETE',
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new ApiError(res.status, messageOf(detail, `${res.status} ${res.statusText}`));
+    }
+  },
 
   queryTelemetry: (query: TelemetryQuery) =>
     request<TelemetrySeries>(
@@ -232,6 +255,12 @@ export const httpApi: IotApi = {
     request<TreeNode>(`/tree/nodes/${nodeId}/order`, {
       method: 'PATCH',
       body: JSON.stringify({ sortOrder }),
+    }),
+
+  renumberNodes: (parentId: number | null) =>
+    request<{ parentId: number | null; renumbered: number }>('/tree/renumber', {
+      method: 'POST',
+      body: JSON.stringify({ parentId }),
     }),
 
   getReplay: (cabinetId: string, at: string) => request<ReplaySnapshot>(`/replay${qs({ cabinetId, at })}`),

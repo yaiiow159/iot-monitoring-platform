@@ -61,6 +61,65 @@ public class AlarmRepository {
     public record Superseded(long alarmId, long ruleId, String severity) {
     }
 
+    /**
+     * 認可：條件還成立，但已經有人在處理，畫面不必再閃。state 刻意不動。
+     *
+     * @return 已經被認可過就回 empty，重複點不會覆蓋第一個認領的人
+     */
+    public Optional<Acked> acknowledge(long alarmId, String username, Instant at) {
+        return jdbc.query("""
+                UPDATE alarm SET acknowledged_at = ?, acknowledged_by = ?
+                WHERE id = ? AND state = 'FIRING' AND acknowledged_at IS NULL
+                RETURNING id, device_id, rule_id, severity
+                """,
+                rs -> rs.next()
+                        ? Optional.of(new Acked(rs.getLong("id"), rs.getInt("device_id"),
+                        rs.getLong("rule_id"), rs.getString("severity")))
+                        : Optional.<Acked>empty(),
+                Timestamp.from(at), username, alarmId);
+    }
+
+    public record Acked(long alarmId, int deviceRowId, long ruleId, String severity) {
+    }
+
+    /** 人工解除單一告警。@return 不存在或早就解除了就回 empty */
+    public Optional<Acked> resolveById(long alarmId, Instant at) {
+        return jdbc.query("""
+                UPDATE alarm SET state = 'RESOLVED', resolved_at = ?
+                WHERE id = ? AND state = 'FIRING'
+                RETURNING id, device_id, rule_id, severity
+                """,
+                rs -> rs.next()
+                        ? Optional.of(new Acked(rs.getLong("id"), rs.getInt("device_id"),
+                        rs.getLong("rule_id"), rs.getString("severity")))
+                        : Optional.<Acked>empty(),
+                Timestamp.from(at), alarmId);
+    }
+
+    /** 規則被停用或刪除時，把它還在響的告警一起解除——否則會亮著而且再也沒有東西會解除它。 */
+    public List<Acked> resolveByRule(long ruleId, Instant at) {
+        return jdbc.query("""
+                UPDATE alarm SET state = 'RESOLVED', resolved_at = ?
+                WHERE rule_id = ? AND state = 'FIRING'
+                RETURNING id, device_id, rule_id, severity
+                """,
+                (rs, i) -> new Acked(rs.getLong("id"), rs.getInt("device_id"),
+                        rs.getLong("rule_id"), rs.getString("severity")),
+                Timestamp.from(at), ruleId);
+    }
+
+    /** 這條規則有沒有留下歷史。有的話不讓刪：外鍵是 CASCADE，刪規則會把告警紀錄一起帶走。 */
+    public long countAlarmsOf(long ruleId) {
+        Long n = jdbc.queryForObject("SELECT count(*) FROM alarm WHERE rule_id = ?", Long.class, ruleId);
+        return n == null ? 0 : n;
+    }
+
+    /** 人工解除或認可時要知道這是哪一台裝置，才能推播與清狀態 */
+    public Optional<String> deviceCodeOf(int deviceRowId) {
+        return jdbc.query("SELECT device_id FROM device WHERE id = ?",
+                rs -> rs.next() ? Optional.of(rs.getString(1)) : Optional.<String>empty(), deviceRowId);
+    }
+
     /** @return 被解除的告警 id；沒有未解除的同款告警時為 empty */
     public Optional<Long> resolve(int deviceRowId, long ruleId, Instant at) {
         return jdbc.query("""

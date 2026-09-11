@@ -164,6 +164,60 @@ public class AlarmEngineConsumer {
         evaluator.forgetAll(deviceIds);
     }
 
+    /**
+     * 認可：條件還成立，但已經有人在處理。state 不動，儀表板的未解除告警數不受影響。
+     *
+     * @return 已經有人認可過就回 empty
+     */
+    public Optional<Long> acknowledge(long alarmId, String username) {
+        Instant now = Instant.now();
+        return alarms.acknowledge(alarmId, username, now).map(acked -> {
+            publishFor(acked, "ACKED", now);
+            return acked.alarmId();
+        });
+    }
+
+    /**
+     * 人工解除。條件若仍成立，狀態機要重新開始累積——不清的話它記得「已經發過了」，
+     * 這則告警就再也不會回來，而問題還在。
+     *
+     * @return 不存在或早就解除了就回 empty
+     */
+    public Optional<Long> resolveManually(long alarmId) {
+        Instant now = Instant.now();
+        return alarms.resolveById(alarmId, now).map(target -> {
+            resolved.increment();
+            String deviceCode = alarms.deviceCodeOf(target.deviceRowId()).orElse("");
+            evaluator.forget(DeviceId.of(deviceCode), List.of(target.ruleId()));
+            publish(new AlarmEvent(target.alarmId(), deviceCode, target.ruleId(), target.severity(),
+                    "RESOLVED", null, now.toEpochMilli()));
+            return target.alarmId();
+        });
+    }
+
+    /**
+     * 規則被改過、停用或刪除。還在響的告警要一起解除，累積中的計時也要歸零，
+     * 否則舊門檻累積到一半的狀態會被新門檻接手。
+     *
+     * @return 被解除的告警數
+     */
+    public int ruleChanged(long ruleId) {
+        Instant now = Instant.now();
+        List<AlarmRepository.Acked> stale = alarms.resolveByRule(ruleId, now);
+        for (AlarmRepository.Acked target : stale) {
+            resolved.increment();
+            publishFor(target, "RESOLVED", now);
+        }
+        evaluator.forgetRules(List.of(ruleId));
+        return stale.size();
+    }
+
+    private void publishFor(AlarmRepository.Acked target, String state, Instant at) {
+        String deviceCode = alarms.deviceCodeOf(target.deviceRowId()).orElse("");
+        publish(new AlarmEvent(target.alarmId(), deviceCode, target.ruleId(), target.severity(), state, null,
+                at.toEpochMilli()));
+    }
+
     /** 供測試與 actuator 觀察 */
     public Map<String, Integer> stats() {
         return Map.of("trackedBreaches", evaluator.trackedBreaches());

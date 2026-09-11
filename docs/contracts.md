@@ -85,13 +85,17 @@ Base：`http://localhost:8090/api/v1`
 | POST | `/devices` | 註冊裝置 |
 | GET | `/alarm-rules` | 列出告警規則 |
 | POST | `/alarm-rules` | 新增告警規則 |
+| PATCH | `/alarm-rules/{id}` | 改門檻、持續時間、嚴重度、名稱、啟用：`{ name, threshold, secondaryValue?, durationSeconds, severity, enabled }`。**範圍與指標不能改**——那等於換一條規則卻沿用同一份告警歷史，要換就停用舊的再新增。改完會解除這條規則還在響的告警並清掉累積計時。 |
+| DELETE | `/alarm-rules/{id}` | 刪規則。**有告警紀錄的會回 409**：外鍵是 `ON DELETE CASCADE`，刪下去紀錄一起消失。要讓它停止作用請改 `enabled = false`。 |
 
 ### 監控
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | GET | `/overview` | 儀表板摘要：各狀態裝置數、未解除告警數、寫入速率 |
-| GET | `/alarms?state=FIRING&deviceId=...` | 告警列表。`deviceId` 供裝置詳情頁的告警歷史使用 |
+| GET | `/alarms?state=FIRING&deviceId=...` | 告警列表。`deviceId` 供裝置詳情頁的告警歷史使用。排序是「還在響的最前、其中未認可的更前、再依觸發時間新到舊」 |
+| POST | `/alarms/{alarmId}/ack` | 認可：有人接手了。**`state` 不變**，儀表板的未解除告警數不受影響；重複認可回 409 |
+| POST | `/alarms/{alarmId}/resolve` | 人工解除。條件若仍成立，狀態機會重新累積並在滿足持續時間後再響一次——解除的是「這一則」，不是問題本身 |
 | GET | `/telemetry` | 歷史查詢，見下 |
 
 ### 歷史查詢
@@ -189,6 +193,7 @@ Device 的父節點只能是 Sensor、Device 不能有子節點。
 | GET | `/tree/{nodeId}/ancestors` | 從根到該節點的路徑，**由上到下**，用來畫麵包屑與定位告警來源 |
 | POST | `/tree/nodes` | 新增節點：`{ kind, name, parentId, deviceId?, sortOrder? }` |
 | PATCH | `/tree/nodes/{nodeId}/order` | 調整順序：`{ sortOrder }` |
+| POST | `/tree/renumber` | 同層重新編號：`{ parentId }`（`null` 為根層）。顯示順序不變，只把 `sortOrder` 重新拉開間隔。反覆在同一處插入會把間隔用完，屆時前端算不出「上移一格」該用什麼值，這是那個死路的出口 |
 
 ```json
 {

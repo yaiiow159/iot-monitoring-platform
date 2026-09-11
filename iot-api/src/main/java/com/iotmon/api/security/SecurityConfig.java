@@ -36,7 +36,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/**").authenticated()
                         .requestMatchers("/api/v1/models/**", "/api/v1/cabinets/**", "/api/v1/alarm-rules/**",
                                 "/api/v1/users/**").hasRole("ADMIN")
-                        .requestMatchers("/api/v1/devices/**", "/api/v1/tree/**").hasAnyRole("ADMIN", "OPERATOR")
+                        .requestMatchers("/api/v1/devices/**", "/api/v1/tree/**",
+                                "/api/v1/alarms/**").hasAnyRole("ADMIN", "OPERATOR")
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint((req, res, ex) -> reject(res, HttpServletResponse.SC_UNAUTHORIZED, "未登入或登入已過期"))

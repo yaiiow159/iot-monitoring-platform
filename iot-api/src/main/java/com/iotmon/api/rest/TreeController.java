@@ -86,6 +86,27 @@ public class TreeController {
                 : ResponseEntity.notFound().build();
     }
 
+    /**
+     * 同層重新編號。順序不變，只是把 sort_order 重新拉開間隔。
+     *
+     * <p>反覆在同一處插入會把間隔用完，前端算不出「上移一格」該用什麼值；
+     * 沒有這個端點的話，使用者在那個錯誤訊息前面就無路可走了。
+     */
+    @PostMapping("/renumber")
+    public RenumberResponse renumber(@RequestBody RenumberRequest request) {
+        if (request.parentId() != null && repository.findById(request.parentId()).isEmpty()) {
+            throw ApiException.notFound("父節點不存在：" + request.parentId());
+        }
+        return new RenumberResponse(request.parentId(), repository.renumber(request.parentId()));
+    }
+
+    /** parentId 為 null 代表根節點那一層 */
+    public record RenumberRequest(Long parentId) {
+    }
+
+    public record RenumberResponse(Long parentId, int renumbered) {
+    }
+
     private List<NodeResponse> build(List<TreeNode> nodes) {
         Map<Long, Rollup> own = repository.firingAlarmsByNode();
         return MonitoringTree.build(nodes, own).stream().map(NodeResponse::from).toList();

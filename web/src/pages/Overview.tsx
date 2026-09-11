@@ -183,10 +183,11 @@ export function Overview() {
               {overview.data && `・更新於 ${formatTime(overview.data.generatedAt)}`}
             </span>
           </header>
-          {firingAlarms.loading ? (
+          {/* 只有第一次才顯示載入中：認可一則之後整張表消失再長回來，比不更新還難用 */}
+          {firingAlarms.loading && !firingAlarms.data ? (
             <p className="empty">載入中…</p>
           ) : (
-            <AlarmTable alarms={alarmRows} emptyText="目前沒有未解除的告警" />
+            <AlarmTable alarms={alarmRows} emptyText="目前沒有未解除的告警" onChanged={firingAlarms.reload} />
           )}
         </section>
       </div>
