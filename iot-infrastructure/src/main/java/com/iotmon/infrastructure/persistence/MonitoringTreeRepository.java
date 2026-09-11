@@ -90,6 +90,31 @@ public class MonitoringTreeRepository {
     }
 
     /**
+     * 一批裝置的祖先鏈，key 是裝置的列 id，值由上到下。
+     * 一次告警風暴會同時送進幾百到幾千則，逐台查就是把 N+1 搬到推播端（見 performance.md）。
+     */
+    public Map<Integer, List<Long>> findAncestorIdsOfDevices(Collection<Integer> deviceRowIds) {
+        if (deviceRowIds == null || deviceRowIds.isEmpty()) {
+            return Map.of();
+        }
+        String placeholders = Rows.placeholders(deviceRowIds.size());
+        Map<Integer, List<Long>> byDevice = new HashMap<>();
+        jdbc.query("""
+                SELECT leaf.device_id, a.id
+                  FROM monitoring_node leaf
+                  JOIN monitoring_node a ON a.path @> leaf.path
+                 WHERE leaf.device_id IN (%s)
+                 ORDER BY leaf.device_id, nlevel(a.path)
+                """.formatted(placeholders),
+                rs -> {
+                    byDevice.computeIfAbsent(rs.getInt("device_id"), k -> new ArrayList<>())
+                            .add(rs.getLong("id"));
+                },
+                deviceRowIds.toArray());
+        return byDevice;
+    }
+
+    /**
      * 這些節點的子樹底下所有裝置的代號。按節點訂閱推播時用：前端只送根節點 id，
      * 展開成裝置集合是後端的事——一萬台裝置的 id 清單不該在瀏覽器與伺服器之間來回。
      */

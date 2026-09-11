@@ -8,6 +8,7 @@ import com.iotmon.infrastructure.mqtt.StatusEnvelope;
 import com.iotmon.infrastructure.mqtt.TelemetryEnvelope;
 import com.iotmon.infrastructure.persistence.DeviceIdResolver;
 import com.iotmon.infrastructure.persistence.MonitoringTreeRepository;
+import com.iotmon.infrastructure.persistence.Rows;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,7 +19,12 @@ import org.springframework.stereotype.Component;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 推播消費端：把 Kafka 上的三種事件送到 WebSocket。
@@ -75,42 +81,107 @@ public class LivePushConsumer {
      */
     @KafkaListener(topics = MqttBridge.TOPIC_DEVICE_STATUS, groupId = "iot-live-push")
     public void onStatus(List<StatusEnvelope> envelopes, Acknowledgment ack) {
-        for (StatusEnvelope e : envelopes) {
-            try {
-                applyStatus(e);
-            } catch (RuntimeException ex) {
-                log.warn("狀態更新失敗 device={}：{}", e.deviceId(), ex.getMessage());
-            }
+        try {
+            applyStatuses(envelopes);
+        } catch (RuntimeException ex) {
+            log.warn("狀態更新失敗（{} 則）：{}", envelopes.size(), ex.getMessage());
         }
         ack.acknowledge();
     }
 
-    private void applyStatus(StatusEnvelope e) {
-        String state = e.state() == null ? "UNKNOWN" : e.state().toUpperCase();
-        // LWT 的 ts 是連線當下的時間（遺言在連線時就定案），離線時間以收到的時刻為準
-        Instant seenAt = "OFFLINE".equals(state) ? Instant.now() : Instant.ofEpochMilli(e.ts());
-        int updated = "OFFLINE".equals(state)
-                ? jdbc.update("UPDATE device SET status = 'OFFLINE' WHERE device_id = ?", e.deviceId())
-                : jdbc.update("UPDATE device SET status = 'ONLINE', last_seen_at = ? WHERE device_id = ?",
-                        Timestamp.from(seenAt), e.deviceId());
-        if (updated == 0) {
-            return; // 未註冊的裝置
+    /**
+     * 整批一次更新。一萬台同時重連時逐台 UPDATE 就是一萬次往返，
+     * 而那正是這條路徑唯一會忙的時刻（見 performance.md）。
+     */
+    private void applyStatuses(List<StatusEnvelope> envelopes) {
+        // 同一台裝置在一批裡可能上下線好幾次，只有最後一則算數
+        Map<String, StatusEnvelope> latest = new LinkedHashMap<>();
+        for (StatusEnvelope e : envelopes) {
+            latest.merge(e.deviceId(), e, (older, newer) -> newer.ts() >= older.ts() ? newer : older);
         }
-        if ("OFFLINE".equals(state)) {
-            alarmEngine.forget(DeviceId.of(e.deviceId()));
+
+        Instant now = Instant.now();
+        List<StatusEnvelope> offline = new ArrayList<>();
+        List<StatusEnvelope> online = new ArrayList<>();
+        for (StatusEnvelope e : latest.values()) {
+            ("OFFLINE".equals(stateOf(e)) ? offline : online).add(e);
         }
-        sessions.publish(new LiveMessage.Status(e.deviceId(), state, seenAt.toEpochMilli()));
+
+        // RETURNING 過濾掉未註冊的裝置，行為與原本 updated == 0 就跳過一致
+        Set<String> applied = new HashSet<>();
+        applied.addAll(updateOffline(offline));
+        applied.addAll(updateOnline(online, now));
+
+        List<DeviceId> wentOffline = offline.stream()
+                .filter(e -> applied.contains(e.deviceId()))
+                .map(e -> DeviceId.of(e.deviceId()))
+                .toList();
+        alarmEngine.forgetAll(wentOffline);
+
+        for (StatusEnvelope e : latest.values()) {
+            if (!applied.contains(e.deviceId())) {
+                continue;
+            }
+            String state = stateOf(e);
+            // LWT 的 ts 是連線當下的時間（遺言在連線時就定案），離線時間以收到的時刻為準
+            long ts = "OFFLINE".equals(state) ? now.toEpochMilli() : e.ts();
+            sessions.publish(new LiveMessage.Status(e.deviceId(), state, ts));
+        }
     }
 
-    /** 告警：補上祖先鏈再推。祖先鏈是一次 ltree 查詢（路徑的所有前綴）。 */
+    private static String stateOf(StatusEnvelope e) {
+        return e.state() == null ? "UNKNOWN" : e.state().toUpperCase();
+    }
+
+    private List<String> updateOffline(List<StatusEnvelope> offline) {
+        if (offline.isEmpty()) {
+            return List.of();
+        }
+        String placeholders = Rows.placeholders(offline.size());
+        return jdbc.query("UPDATE device SET status = 'OFFLINE' WHERE device_id IN (" + placeholders
+                        + ") RETURNING device_id",
+                (rs, i) -> rs.getString(1),
+                offline.stream().map(StatusEnvelope::deviceId).toArray());
+    }
+
+    private List<String> updateOnline(List<StatusEnvelope> online, Instant now) {
+        if (online.isEmpty()) {
+            return List.of();
+        }
+        StringBuilder values = new StringBuilder();
+        List<Object> args = new ArrayList<>(online.size() * 2);
+        for (StatusEnvelope e : online) {
+            values.append(values.isEmpty() ? "" : ",").append("(?, ?::timestamptz)");
+            args.add(e.deviceId());
+            args.add(Timestamp.from(Instant.ofEpochMilli(e.ts())));
+        }
+        return jdbc.query("""
+                UPDATE device d SET status = 'ONLINE', last_seen_at = v.ts
+                FROM (VALUES %s) AS v(device_id, ts)
+                WHERE d.device_id = v.device_id
+                RETURNING d.device_id
+                """.formatted(values), (rs, i) -> rs.getString(1), args.toArray());
+    }
+
+    /**
+     * 告警：補上祖先鏈再推。整批一次查——一次機櫃斷線就是幾百則，
+     * 逐則查等於把 N+1 搬到推播端（見 performance.md）。
+     */
     @KafkaListener(topics = AlarmEngineConsumer.TOPIC_ALARM, groupId = "iot-live-push")
     public void onAlarm(List<AlarmEvent> events, Acknowledgment ack) {
+        Map<String, Integer> rowIds = new LinkedHashMap<>();
         for (AlarmEvent event : events) {
-            List<Long> ancestors = List.of();
             Integer rowId = deviceIds.numericIdOf(DeviceId.of(event.deviceId()));
             if (rowId != null) {
-                ancestors = tree.findAncestorIdsOfDevice(rowId);
+                rowIds.put(event.deviceId(), rowId);
             }
+        }
+        Map<Integer, List<Long>> ancestorsByRow = tree.findAncestorIdsOfDevices(rowIds.values());
+
+        for (AlarmEvent event : events) {
+            Integer rowId = rowIds.get(event.deviceId());
+            List<Long> ancestors = rowId == null ? List.of()
+                    : ancestorsByRow.getOrDefault(rowId, List.of());
             sessions.publish(new LiveMessage.Alarm(event.alarmId(), event.deviceId(), event.severity(),
                     event.state(), ancestors, event.ts()));
         }
