@@ -5,6 +5,7 @@ import com.iotmon.domain.device.DeviceId;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,9 +29,10 @@ public class AlarmEvaluator {
         BreachKey key = new BreachKey(deviceId, rule.id());
 
         if (!rule.isBreachedBy(value)) {
-            // 回到正常值。之前若在累積中就取消，若已經告警則要解除。
+            // 回到正常值。累積中就回復的沒發過告警，資料庫裡沒有東西可以解除——
+            // 回 RESOLVE 只會讓每次抖動都多打一次資料庫。
             Instant removed = breachStartedAt.remove(key);
-            return removed != null ? Decision.RESOLVE : Decision.NOTHING;
+            return hasFired(removed, rule) ? Decision.RESOLVE : Decision.NOTHING;
         }
 
         Duration sustainedFor = rule.sustainedFor();
@@ -56,6 +58,11 @@ public class AlarmEvaluator {
         return Decision.FIRE;
     }
 
+    /** 不要求持續時間的規則一進 map 就已經發過告警；其餘看哨兵值。 */
+    private static boolean hasFired(Instant removed, AlarmRule rule) {
+        return removed != null && (rule.sustainedFor().isZero() || removed.equals(FIRED_MARKER));
+    }
+
     /**
      * 裝置離線時清掉它的累積狀態。
      *
@@ -64,6 +71,17 @@ public class AlarmEvaluator {
      */
     public void forget(DeviceId deviceId) {
         breachStartedAt.keySet().removeIf(key -> key.deviceId().equals(deviceId));
+    }
+
+    /**
+     * 只清掉指定規則的累積狀態。
+     *
+     * <p>裝置規則以指標為單位取代機型規則（ADR-0006），整台清會把其他指標的計時一併歸零。
+     */
+    public void forget(DeviceId deviceId, Collection<Long> ruleIds) {
+        for (Long ruleId : ruleIds) {
+            breachStartedAt.remove(new BreachKey(deviceId, ruleId));
+        }
     }
 
     public int trackedBreaches() {

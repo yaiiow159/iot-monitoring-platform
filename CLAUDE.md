@@ -38,7 +38,7 @@ Java 21／Spring Boot 3.3 六角架構＋Vite React 18；註解與 UI 用繁體�
 
 ```bash
 node .claude/skills/quality-scan/scan.js        # 重複樣態、繞過共用做法、長註解、分層違規
-node .claude/skills/arch-check/run.js           # ArchUnit ＋ 單元測試 ＋ tsc
+node .claude/skills/arch-check/run.js           # ArchUnit ＋ 單元測試 ＋ tsc ＋ 前端 lint
 node .claude/skills/code-review/collect.js      # 審查材料；審完 mark.js 才能 push
 node .claude/lib/baseline.js --update           # 修完一批舊問題後更新基準線
 ```

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 
 import static com.iotmon.application.alarm.AlarmEvaluator.Decision;
 import static org.junit.jupiter.api.Assertions.*;
@@ -120,5 +121,65 @@ class AlarmEvaluatorTest {
         assertEquals(Decision.FIRE, evaluator.evaluate(DEVICE, warning, 35, T0));
         assertEquals(Decision.NOTHING, evaluator.evaluate(DEVICE, critical, 35, T0));
         assertEquals(Decision.FIRE, evaluator.evaluate(DEVICE, critical, 55, T0.plusSeconds(1)));
+    }
+
+    @Test
+    @DisplayName("累積中就回復的不算解除——那則告警從來沒有發出去過")
+    void doesNotResolveABreachThatNeverFired() {
+        AlarmEvaluator evaluator = new AlarmEvaluator();
+        AlarmRule rule = ruleSustainedFor(Duration.ofSeconds(60));
+
+        assertEquals(Decision.NOTHING, evaluator.evaluate(DEVICE, rule, 35, T0));
+        assertEquals(Decision.NOTHING, evaluator.evaluate(DEVICE, rule, 25, T0.plusSeconds(10)),
+                "只違反了 10 秒、門檻是 60 秒，資料庫裡沒有東西可以解除");
+        assertEquals(0, evaluator.trackedBreaches());
+    }
+
+    @Test
+    @DisplayName("有持續時間的規則發過之後，回復才算解除")
+    void resolvesOnlyAfterItActuallyFired() {
+        AlarmEvaluator evaluator = new AlarmEvaluator();
+        AlarmRule rule = ruleSustainedFor(Duration.ofSeconds(60));
+
+        evaluator.evaluate(DEVICE, rule, 35, T0);
+        assertEquals(Decision.FIRE, evaluator.evaluate(DEVICE, rule, 36, T0.plusSeconds(60)));
+        assertEquals(Decision.RESOLVE, evaluator.evaluate(DEVICE, rule, 25, T0.plusSeconds(90)));
+    }
+
+    @Test
+    @DisplayName("抖動一百次不該產生任何解除——這是上一條的另一面")
+    void flappingProducesNoResolves() {
+        AlarmEvaluator evaluator = new AlarmEvaluator();
+        AlarmRule rule = ruleSustainedFor(Duration.ofSeconds(60));
+
+        int resolved = 0;
+        for (int i = 0; i < 100; i++) {
+            double value = (i % 2 == 0) ? 30.5 : 29.5;
+            if (evaluator.evaluate(DEVICE, rule, value, T0.plusSeconds(i)) == Decision.RESOLVE) {
+                resolved++;
+            }
+        }
+        assertEquals(0, resolved, "每次回復都回 RESOLVE 的話，熱路徑上每次抖動都會多打一次資料庫");
+    }
+
+    @Test
+    @DisplayName("指定規則的清除不會動到同一台裝置上其他指標的累積")
+    void forgettingRulesLeavesOtherMetricsAccumulating() {
+        AlarmEvaluator evaluator = new AlarmEvaluator();
+        AlarmRule temperature = ruleSustainedFor(Duration.ofSeconds(60));
+        AlarmRule humidity = AlarmRule.forModel(2L, "濕度過高", MODEL, MetricKey.of("humidity"),
+                Comparison.GT, 80, null, AlarmSeverity.WARNING, Duration.ofSeconds(60), true);
+
+        evaluator.evaluate(DEVICE, temperature, 35, T0);
+        evaluator.evaluate(DEVICE, humidity, 85, T0);
+
+        // 濕度被裝置規則接管，只清濕度那一條
+        evaluator.forget(DEVICE, List.of(humidity.id()));
+        assertEquals(1, evaluator.trackedBreaches());
+
+        // 溫度的計時沒有被歸零：從 T0 起算滿 60 秒就該告警
+        assertEquals(Decision.FIRE, evaluator.evaluate(DEVICE, temperature, 36, T0.plusSeconds(60)));
+        assertEquals(Decision.NOTHING, evaluator.evaluate(DEVICE, humidity, 86, T0.plusSeconds(60)),
+                "濕度是重新開始算的，60 秒還不夠");
     }
 }

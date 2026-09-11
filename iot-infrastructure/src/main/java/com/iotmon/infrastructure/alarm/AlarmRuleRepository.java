@@ -8,8 +8,6 @@ import com.iotmon.domain.device.DeviceId;
 import com.iotmon.domain.model.MetricKey;
 import com.iotmon.domain.model.ModelCode;
 import com.iotmon.infrastructure.persistence.Rows;
-import com.iotmon.infrastructure.persistence.Rows;
-import com.iotmon.infrastructure.persistence.Rows;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -50,6 +48,14 @@ public class AlarmRuleRepository {
         return AlarmRulePrecedence.resolve(
                 s.byModel().getOrDefault(model, List.of()),
                 s.byDevice().getOrDefault(deviceId, List.of()));
+    }
+
+    /** 這個機型在這個指標上的規則 id。裝置規則接管該指標時，要清掉它們的累積狀態（ADR-0006）。 */
+    public List<Long> modelRuleIdsFor(ModelCode model, MetricKey metric) {
+        return current().byModel().getOrDefault(model, List.of()).stream()
+                .filter(rule -> rule.metric().equals(metric))
+                .map(AlarmRule::id)
+                .toList();
     }
 
     /** 設定畫面用：含停用的、含兩種範圍，依 id 排序。 */

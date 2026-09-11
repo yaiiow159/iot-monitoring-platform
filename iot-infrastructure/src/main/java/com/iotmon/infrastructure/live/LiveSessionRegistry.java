@@ -46,8 +46,8 @@ public class LiveSessionRegistry {
 
     public void register(LiveSubscriber subscriber) {
         subscribers.put(subscriber.id(), subscriber);
-        subscriptions.put(subscriber.id(), ConcurrentHashMap.newKeySet());
-        nodeSubscriptions.put(subscriber.id(), ConcurrentHashMap.newKeySet());
+        subscriptions.put(subscriber.id(), Set.of());
+        nodeSubscriptions.put(subscriber.id(), Set.of());
     }
 
     public void unregister(String subscriberId) {
@@ -66,15 +66,10 @@ public class LiveSessionRegistry {
      * @param nodeDeviceIds 由節點展開的裝置：只推狀態與告警
      */
     public void subscribe(String subscriberId, Set<String> deviceIds, Set<String> nodeDeviceIds) {
-        Set<String> current = subscriptions.get(subscriberId);
-        Set<String> nodes = nodeSubscriptions.get(subscriberId);
-        if (current == null || nodes == null) {
-            return;
-        }
-        current.clear();
-        current.addAll(deviceIds);
-        nodes.clear();
-        nodes.addAll(nodeDeviceIds);
+        // 整組換掉而不是 clear() 再 addAll()：publish 正在迭代時會看到中間的空集合，那一則告警就漏推了。
+        // computeIfPresent 是原子的，也不會把已經 unregister 的連線復活。
+        subscriptions.computeIfPresent(subscriberId, (id, previous) -> Set.copyOf(deviceIds));
+        nodeSubscriptions.computeIfPresent(subscriberId, (id, previous) -> Set.copyOf(nodeDeviceIds));
     }
 
     /** 推給所有訂閱了這台裝置的連線 */

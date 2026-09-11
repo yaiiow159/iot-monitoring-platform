@@ -2,10 +2,6 @@ package com.iotmon.api.security;
 
 import com.iotmon.api.rest.ApiException;
 import com.iotmon.api.rest.Params;
-import com.iotmon.api.rest.ApiException;
-import com.iotmon.api.rest.Params;
-import com.iotmon.api.rest.ApiException;
-import com.iotmon.api.rest.Params;
 import com.iotmon.domain.auth.Role;
 import com.iotmon.infrastructure.auth.AuditLogRepository;
 import com.iotmon.infrastructure.auth.UserRepository;

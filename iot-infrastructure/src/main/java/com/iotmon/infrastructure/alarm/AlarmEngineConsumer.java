@@ -131,7 +131,7 @@ public class AlarmEngineConsumer {
 
     /**
      * 裝置規則接管某個指標：解除該裝置上同指標機型規則的告警並推播，
-     * 再清掉它的累積狀態，讓新規則從零開始計算持續時間。
+     * 再清掉「那個指標」的累積狀態，讓新規則從零開始計算持續時間。
      *
      * @return 被解除的告警數
      */
@@ -147,7 +147,9 @@ public class AlarmEngineConsumer {
             publish(new AlarmEvent(s.alarmId(), deviceId.value(), s.ruleId(), s.severity(), "RESOLVED", null,
                     now.toEpochMilli()));
         }
-        evaluator.forget(deviceId);
+        // 只清被取代的那些規則：整台清會把其他指標還在累積的計時一併歸零
+        catalog.modelOf(deviceId)
+                .ifPresent(model -> evaluator.forget(deviceId, rules.modelRuleIdsFor(model, metric)));
         return superseded.size();
     }
 

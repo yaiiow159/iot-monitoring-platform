@@ -1,5 +1,7 @@
 package com.iotmon.infrastructure.ingest;
 
+import com.iotmon.domain.device.DeviceId;
+import com.iotmon.infrastructure.alarm.AlarmEngineConsumer;
 import com.iotmon.infrastructure.live.LiveMessage;
 import com.iotmon.infrastructure.live.LiveSessionRegistry;
 import io.micrometer.core.instrument.Counter;
@@ -30,14 +32,17 @@ public class DeviceLiveness {
     private final Map<String, Long> lastSeen = new ConcurrentHashMap<>();
     private final JdbcTemplate jdbc;
     private final LiveSessionRegistry sessions;
+    private final AlarmEngineConsumer alarmEngine;
     private final long silenceThresholdMs;
     private final Counter flippedOnline;
     private final Counter flippedOffline;
 
-    public DeviceLiveness(JdbcTemplate jdbc, LiveSessionRegistry sessions, MeterRegistry registry,
+    public DeviceLiveness(JdbcTemplate jdbc, LiveSessionRegistry sessions, AlarmEngineConsumer alarmEngine,
+                          MeterRegistry registry,
                           @Value("${iot.offline-detection.silence-threshold-seconds:180}") long silenceThresholdSeconds) {
         this.jdbc = jdbc;
         this.sessions = sessions;
+        this.alarmEngine = alarmEngine;
         this.silenceThresholdMs = silenceThresholdSeconds * 1000;
         this.flippedOnline = Counter.builder("device.liveness.online")
                 .description("因為收到遙測而從非在線改為在線的裝置數").register(registry);
@@ -60,11 +65,14 @@ public class DeviceLiveness {
         if (lastSeen.isEmpty()) {
             return;
         }
+        // 逐鍵移除而不是 clear()：迭代與 clear 之間進來的 seen() 會被一起清掉（同 TelemetryThrottle.drain）
         List<Object[]> rows = new ArrayList<>(lastSeen.size());
-        for (Map.Entry<String, Long> e : lastSeen.entrySet()) {
-            rows.add(new Object[]{e.getKey(), Timestamp.from(Instant.ofEpochMilli(e.getValue()))});
+        for (String deviceId : List.copyOf(lastSeen.keySet())) {
+            Long seenAt = lastSeen.remove(deviceId);
+            if (seenAt != null) {
+                rows.add(new Object[]{deviceId, Timestamp.from(Instant.ofEpochMilli(seenAt))});
+            }
         }
-        lastSeen.clear();
 
         // 兩段：先把不在線的翻成在線（要推播），再更新其餘的 last_seen_at（不推播）。
         // 一萬台裝置 10 秒一次，是幾毫秒的事；分成 500 筆一批避免單一 SQL 太長。
@@ -113,6 +121,8 @@ public class DeviceLiveness {
             flippedOffline.increment(silent.size());
             long now = System.currentTimeMillis();
             for (String id : silent) {
+                // LWT 那條路徑會清，這條補網路徑漏掉的話，重新上線會因為離線期間而立刻告警
+                alarmEngine.forget(DeviceId.of(id));
                 sessions.publish(new LiveMessage.Status(id, "OFFLINE", now));
             }
             log.info("{} 台裝置超過 {} 秒沒有遙測，改為離線", silent.size(), silenceThresholdMs / 1000);

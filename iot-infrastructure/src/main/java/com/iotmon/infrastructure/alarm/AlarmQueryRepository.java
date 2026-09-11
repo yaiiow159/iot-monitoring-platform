@@ -1,8 +1,6 @@
 package com.iotmon.infrastructure.alarm;
 
 import com.iotmon.infrastructure.persistence.Rows;
-import com.iotmon.infrastructure.persistence.Rows;
-import com.iotmon.infrastructure.persistence.Rows;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 

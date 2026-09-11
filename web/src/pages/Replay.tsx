@@ -96,7 +96,8 @@ export function Replay() {
   }, [playing]);
 
   const cabinet = (cabinets.data ?? []).find((c) => c.id === cabinetId) ?? null;
-  const devices = snapshot?.devices ?? [];
+  // 沒有快照時每次 render 都會是一個新的空陣列，底下三個 useMemo 就等於沒有快取
+  const devices = useMemo(() => snapshot?.devices ?? [], [snapshot]);
   const bySlot = useMemo(() => new Map(devices.map((d) => [d.slot ?? 0, d])), [devices]);
   const activeAlarms = useMemo(
     () => devices.flatMap((d) => d.alarms.map((a) => ({ ...a, deviceId: d.deviceId }))),
