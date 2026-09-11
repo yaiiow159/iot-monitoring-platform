@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { can, useSession } from '../auth/session';
+import { Feedback } from './forms';
 import type { Alarm } from '../api/types';
 import { SEVERITY_LABEL, formatNumber, formatRelative, formatTime } from '../utils/format';
 
@@ -45,12 +46,7 @@ export function AlarmTable({ alarms, showDevice = true, emptyText = '目前沒�
 
   return (
     <div className="table-scroll">
-      {error && (
-        <p className="error" role="alert">
-          <span className="caption">後端拒絕</span>
-          {error}
-        </p>
-      )}
+      <Feedback ok={null} error={error} />
       <table className="data-table">
         <thead>
           <tr>
