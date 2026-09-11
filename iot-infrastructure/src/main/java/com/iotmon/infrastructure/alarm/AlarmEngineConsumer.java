@@ -20,6 +20,7 @@ import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -156,6 +157,11 @@ public class AlarmEngineConsumer {
     /** 裝置離線時清掉它的累積狀態（見 AlarmEvaluator.forget 的說明） */
     public void forget(DeviceId deviceId) {
         evaluator.forget(deviceId);
+    }
+
+    /** 一批裝置同時離線（靜默掃描）時用這個，不要在迴圈裡逐台呼叫 forget */
+    public void forgetAll(Collection<DeviceId> deviceIds) {
+        evaluator.forgetAll(deviceIds);
     }
 
     /** 供測試與 actuator 觀察 */

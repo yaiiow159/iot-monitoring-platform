@@ -119,10 +119,10 @@ public class DeviceLiveness {
                 """, (rs, n) -> rs.getString(1), cutoff);
         if (!silent.isEmpty()) {
             flippedOffline.increment(silent.size());
+            // LWT 那條路徑會清，這條補網路徑漏掉的話，重新上線會因為離線期間而立刻告警
+            alarmEngine.forgetAll(silent.stream().map(DeviceId::of).toList());
             long now = System.currentTimeMillis();
             for (String id : silent) {
-                // LWT 那條路徑會清，這條補網路徑漏掉的話，重新上線會因為離線期間而立刻告警
-                alarmEngine.forget(DeviceId.of(id));
                 sessions.publish(new LiveMessage.Status(id, "OFFLINE", now));
             }
             log.info("{} 台裝置超過 {} 秒沒有遙測，改為離線", silent.size(), silenceThresholdMs / 1000);

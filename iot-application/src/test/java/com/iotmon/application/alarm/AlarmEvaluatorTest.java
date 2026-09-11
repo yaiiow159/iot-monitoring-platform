@@ -182,4 +182,21 @@ class AlarmEvaluatorTest {
         assertEquals(Decision.NOTHING, evaluator.evaluate(DEVICE, humidity, 86, T0.plusSeconds(60)),
                 "濕度是重新開始算的，60 秒還不夠");
     }
+
+    @Test
+    @DisplayName("一批裝置同時離線只掃一次 map，而且只清掉那一批")
+    void forgetAllClearsOnlyTheGivenDevices() {
+        AlarmEvaluator evaluator = new AlarmEvaluator();
+        AlarmRule rule = ruleSustainedFor(Duration.ofSeconds(60));
+        DeviceId other = DeviceId.of("DEV-002");
+
+        evaluator.evaluate(DEVICE, rule, 35, T0);
+        evaluator.evaluate(other, rule, 35, T0);
+        assertEquals(2, evaluator.trackedBreaches());
+
+        evaluator.forgetAll(List.of(DEVICE));
+        assertEquals(1, evaluator.trackedBreaches());
+        // 沒被清的那台計時照走
+        assertEquals(Decision.FIRE, evaluator.evaluate(other, rule, 36, T0.plusSeconds(60)));
+    }
 }

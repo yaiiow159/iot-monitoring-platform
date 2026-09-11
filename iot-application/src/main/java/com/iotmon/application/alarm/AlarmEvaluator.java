@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -70,7 +71,19 @@ public class AlarmEvaluator {
      * 會因為「違反狀態持續了半小時」而立刻告警——但那半小時根本沒有讀數。
      */
     public void forget(DeviceId deviceId) {
-        breachStartedAt.keySet().removeIf(key -> key.deviceId().equals(deviceId));
+        forgetAll(Set.of(deviceId));
+    }
+
+    /**
+     * 一次清掉多台裝置。一台一台呼叫是每台各掃一次整個 map，
+     * 而讓一萬台同時離線的情境（broker 掛掉）正好是這裡最該撐住的時候。
+     */
+    public void forgetAll(Collection<DeviceId> deviceIds) {
+        if (deviceIds.isEmpty()) {
+            return;
+        }
+        Set<DeviceId> targets = Set.copyOf(deviceIds);
+        breachStartedAt.keySet().removeIf(key -> targets.contains(key.deviceId()));
     }
 
     /**
