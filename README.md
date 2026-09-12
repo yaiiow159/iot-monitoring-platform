@@ -209,3 +209,4 @@ java -jar iot-simulator/target/iot-simulator.jar --simulator.device-count=1000
 | [0005](docs/adr/0005-tree-ltree-and-rollup-by-recompute.md) | 監控樹用 ltree 存路徑，告警上浮用子樹重算而非計數器 |
 | [0006](docs/adr/0006-device-rule-overrides-model-rule-by-metric.md) | 裝置規則以指標為單位取代機型規則 |
 | [0007](docs/adr/0007-bridge-shared-subscription.md) | MQTT 橋接用多條連線共享訂閱，回呼離開事件迴圈 |
+| [0008](docs/adr/0008-chunk-sized-for-the-write-path.md) | 原始表的 chunk 大小由寫入端決定，不是由保留期決定 |
